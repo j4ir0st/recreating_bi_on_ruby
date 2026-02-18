@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login | Calculador de Comisiones</title>
+  <%= csrf_meta_tags %>
+  <%= csp_meta_tag %>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #0f1323;
+      --bg-card: #1e2642;
+      --text-primary: #e2e8f0;
+      --text-secondary: #a0aec0;
+      --accent-blue: #00d4ff;
+      --border-color: #2d3748;
+    }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .auth-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 40px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    }
+    .auth-header { text-align: center; margin-bottom: 32px; }
+    .auth-header h1 { font-size: 1.5rem; color: var(--text-primary); margin-bottom: 8px; }
+    .auth-header p { color: var(--text-secondary); font-size: 0.875rem; }
+    .form-group { margin-bottom: 20px; }
+    .form-group label { display: block; font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 8px; }
+    .form-control {
+      width: 100%;
+      padding: 10px 12px;
+      background: #1a2035;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      color: var(--text-primary);
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .form-control:focus { border-color: var(--accent-blue); }
+    .btn-primary {
+      width: 100%;
+      padding: 12px;
+      background: var(--accent-blue);
+      color: #000;
+      font-weight: 600;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .btn-primary:hover { opacity: 0.9; }
+    .alert {
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 0.875rem;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    .alert-danger { background: rgba(255, 107, 53, 0.15); color: #ff6b35; border: 1px solid rgba(255, 107, 53, 0.3); }
+    .alert-success { background: rgba(72, 187, 120, 0.15); color: #48bb78; border: 1px solid rgba(72, 187, 120, 0.3); }
+  </style>
+</head>
+<body>
+  <%= yield %>
+</body>
+</html>

@@ -1,0 +1,18 @@
+<!-- Tab de Reporte: Gráfico de evolución mensual -->
+<div class="chart-section">
+  <h3>Evolución Mensual de Montos y Cobros</h3>
+  <div class="chart-container">
+    <%
+      chart_data = {
+        labels: (monthly_data || []).map { |m| m[:label] },
+        monto_soles: (monthly_data || []).map { |m| m[:monto_soles].round(2) },
+        cobrado: (monthly_data || []).map { |m| m[:cobrado].round(2) },
+        saldo: (monthly_data || []).map { |m| m[:saldo].round(2) }
+      }
+    %>
+    <canvas id="reporteChart" 
+            data-controller="chart"
+            data-chart-data-value="<%= chart_data.to_json %>">
+    </canvas>
+  </div>
+</div>

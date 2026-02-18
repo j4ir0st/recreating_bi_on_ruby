@@ -1,0 +1,40 @@
+<!-- Tab de Vendedor: Resumen por Vendedor -->
+<div class="table-section">
+  <div class="table-header">
+    <h3>Resumen por Vendedor</h3>
+    <p>Montos agrupados por vendedor</p>
+  </div>
+  <div class="table-wrapper">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Vendedor</th>
+          <th class="text-right">Monto Total (S/)</th>
+          <th class="text-right">Cobrado (S/)</th>
+          <th class="text-right">Saldo (S/)</th>
+          <th class="text-center">Comprobantes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% (vendor_data || []).each do |vd| %>
+          <tr>
+            <td><%= vd[:vendedor] %></td>
+            <td class="text-right">S/ <%= number_with_delimiter(vd[:monto_soles].round(2), delimiter: '.', separator: ',') rescue '0,00' %></td>
+            <td class="text-right">S/ <%= number_with_delimiter(vd[:cobrado].round(2), delimiter: '.', separator: ',') rescue '0,00' %></td>
+            <td class="text-right">S/ <%= number_with_delimiter(vd[:saldo].round(2), delimiter: '.', separator: ',') rescue '0,00' %></td>
+            <td class="text-center"><%= vd[:count] %></td>
+          </tr>
+        <% end %>
+      </tbody>
+      <tfoot>
+        <tr>
+          <td><strong>Total</strong></td>
+          <td class="text-right"><strong>S/ <%= number_with_delimiter(dashboard[:total_monto].round(2), delimiter: '.', separator: ',') rescue '0,00' %></strong></td>
+          <td class="text-right"><strong>S/ <%= number_with_delimiter(dashboard[:total_cobrado].round(2), delimiter: '.', separator: ',') rescue '0,00' %></strong></td>
+          <td class="text-right"><strong>S/ <%= number_with_delimiter(dashboard[:total_saldo].round(2), delimiter: '.', separator: ',') rescue '0,00' %></strong></td>
+          <td class="text-center"><strong><%= dashboard[:total_comprobantes] %></strong></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>

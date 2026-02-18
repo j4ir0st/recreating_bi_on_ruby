@@ -1,0 +1,43 @@
+# Ver https://help.github.com/articles/ignoring-files para más información.
+#
+# Si te encuentras ignorando archivos temporales generados por tu editor de texto
+# o sistema operativo, es recomendable añadir un ignore global.
+#   git config --global core.excludesfile '~/.gitignore_global'
+
+# Ignorar configuración de bundler.
+/.bundle
+
+# Ignorar logs y archivos temporales.
+/log/*
+/tmp/*
+!/log/.keep
+!/tmp/.keep
+
+# Ignorar archivos PID, pero mantener el directorio.
+/tmp/pids/*
+!/tmp/pids/
+!/tmp/pids/.keep
+
+# Ignorar archivos subidos en desarrollo.
+/storage/*
+!/storage/.keep
+
+/public/assets
+.byebug_history
+
+# Ignorar llave maestra de credenciales.
+/config/master.key
+
+# Ignorar override de docker-compose
+docker-compose.override.yml
+
+# Ignorar variables de entorno
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Ignorar archivos del sistema operativo
+.DS_Store
+Thumbs.db

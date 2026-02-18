@@ -1,0 +1,86 @@
+<div class="dashboard-container" data-controller="dashboard">
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <h1>Calculador de Comisiones</h1>
+      <p>Gestiona y calcula comisiones de vendedores por mes</p>
+    </div>
+    <div class="header-right">
+      <div class="datetime"><%= Time.now.strftime("%d/%m/%Y %I:%M:%S %p") %></div>
+      <div class="filters-panel">
+        <div class="filter-group">
+          <label>Año</label>
+          <select data-dashboard-target="yearSelect" data-action="change->dashboard#filterChanged">
+            <% (@years || []).each do |year| %>
+              <option value="<%= year %>" <%= 'selected' if @selected_year == year %>><%= year %></option>
+            <% end %>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label>Mes</label>
+          <select data-dashboard-target="dateSelect" data-action="change->dashboard#filterChanged">
+            <option value="Todas" <%= 'selected' if @selected_month == 'Todas' %>>Todas</option>
+            <% (@dates || []).each do |month| %>
+              <option value="<%= month %>" <%= 'selected' if @selected_month == month %>><%= month %></option>
+            <% end %>
+          </select>
+        </div>
+        <% if @active_tab == "vendedor" || @active_tab == "reporte" %>
+          <div class="filter-group">
+            <label>Vendedor</label>
+            <select data-dashboard-target="vendorSelect" data-action="change->dashboard#filterChanged">
+              <option value="Todas" <%= 'selected' if params[:vendor].blank? || params[:vendor] == 'Todas' %>>Todas</option>
+              <% (@vendors || []).each do |vendor| %>
+                <option value="<%= vendor %>" <%= 'selected' if params[:vendor] == vendor %>><%= vendor %></option>
+              <% end %>
+            </select>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab-btn <%= 'active' if @active_tab == 'panel' %>"
+            data-tab="panel"
+            data-action="click->dashboard#switchTab">Panel</button>
+    <button class="tab-btn <%= 'active' if @active_tab == 'vendedor' %>"
+            data-tab="vendedor"
+            data-action="click->dashboard#switchTab">Vendedor</button>
+    <button class="tab-btn <%= 'active' if @active_tab == 'reporte' %>"
+            data-tab="reporte"
+            data-action="click->dashboard#switchTab">Reportes</button>
+  </div>
+
+  <!-- KPI Cards -->
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-value">S/ <%= number_with_delimiter(@dashboard[:total_monto].round(0), delimiter: '.') rescue '0' %></div>
+      <div class="kpi-label">Monto Total (Soles)</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-value">S/ <%= number_with_delimiter(@dashboard[:total_cobrado].round(0), delimiter: '.') rescue '0' %></div>
+      <div class="kpi-label">Total Cobrado</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-value">S/ <%= number_with_delimiter(@dashboard[:total_saldo].round(0), delimiter: '.') rescue '0' %></div>
+      <div class="kpi-label">Saldo Pendiente</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-value"><%= number_with_delimiter(@dashboard[:total_comprobantes], delimiter: '.') rescue '0' %></div>
+      <div class="kpi-label">Comprobantes</div>
+    </div>
+  </div>
+
+  <!-- Tab Content -->
+  <div data-dashboard-target="content">
+    <% if @active_tab == "panel" %>
+      <%= render partial: "dashboard/tabs/panel", locals: { dashboard: @dashboard, details: @details } %>
+    <% elsif @active_tab == "vendedor" %>
+      <%= render partial: "dashboard/tabs/vendedor", locals: { dashboard: @dashboard, vendor_data: @vendor_data } %>
+    <% elsif @active_tab == "reporte" %>
+      <%= render partial: "dashboard/tabs/reporte", locals: { dashboard: @dashboard, monthly_data: @monthly_data } %>
+    <% end %>
+  </div>
+</div>

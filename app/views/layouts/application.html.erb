@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Calculador de Comisiones | Dashboard</title>
+  <meta name="description" content="Dashboard de comisiones estilo Power BI">
+  <%= csrf_meta_tags %>
+  <%= csp_meta_tag %>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <script type="module">
+    import * as Turbo from "https://cdn.skypack.dev/@hotwired/turbo@7.3.0";
+    import { Application, Controller } from "https://cdn.skypack.dev/@hotwired/stimulus@3.2.2";
+
+    const application = Application.start();
+
+    // Controlador Stimulus del Dashboard
+    application.register("dashboard", class extends Controller {
+      static targets = ["content", "vendorSelect", "dateSelect", "yearSelect"]
+
+      connect() {
+        // Recuperar la pestaña activa actual
+        this.currentTab = document.querySelector('.tab-btn.active')?.dataset.tab || "panel";
+      }
+
+      // Método para cambiar de pestaña
+      switchTab(event) {
+        event.preventDefault();
+        // Mostrar indicador de carga
+        if (window.showLoader) window.showLoader();
+        
+        const tab = event.currentTarget.dataset.tab;
+        this.currentTab = tab;
+
+        // Actualizar clases CSS para estado activo
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        event.currentTarget.classList.add('active');
+
+        // Obtener valores de los filtros
+        const vendor = this.hasVendorSelectTarget ? this.vendorSelectTarget.value : "";
+        const dateRange = this.hasDateSelectTarget ? this.dateSelectTarget.value : "";
+        const year = this.hasYearSelectTarget ? this.yearSelectTarget.value : "";
+
+        // Petición AJAX para obtener el HTML de la pestaña
+        fetch(`/${tab}?vendor=${encodeURIComponent(vendor)}&date_range=${encodeURIComponent(dateRange)}&year=${encodeURIComponent(year)}`, {
+          headers: { "Accept": "text/html" }
+        })
+        .then(r => r.text())
+        .then(html => {
+          this.contentTarget.innerHTML = html;
+          if (window.hideLoader) window.hideLoader(); // Ocultar carga
+        })
+        .catch(() => {
+          if (window.hideLoader) window.hideLoader();
+        });
+      }
+
+      // Método llamado al cambiar filtros
+      filterChanged() {
+        if (window.showLoader) window.showLoader();
+        const vendor = this.hasVendorSelectTarget ? this.vendorSelectTarget.value : "";
+        const dateRange = this.hasDateSelectTarget ? this.dateSelectTarget.value : "";
+        const year = this.hasYearSelectTarget ? this.yearSelectTarget.value : "";
+        
+        // Recargar página con nuevos parámetros (GET)
+        window.location.href = `/?tab=${this.currentTab}&vendor=${encodeURIComponent(vendor)}&date_range=${encodeURIComponent(dateRange)}&year=${encodeURIComponent(year)}`;
+      }
+    });
+
+    // Controlador para Gráficos
+    application.register("chart", class extends Controller {
+      static values = { data: Object }
+
+      connect() {
+        this.initChart();
+      }
+
+      disconnect() {
+        // Limpiar gráfico al desconectar para liberar memoria
+        if (this.chart) {
+          this.chart.destroy();
+        }
+      }
+
+      initChart() {
+        const ctx = this.element.getContext('2d');
+        const chartData = this.dataValue;
+
+        this.chart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: chartData.labels || [],
+            datasets: [
+              {
+                label: 'Monto Total',
+                data: chartData.monto_soles || [],
+                borderColor: '#00d4ff',
+                backgroundColor: 'rgba(0, 212, 255, 0.05)',
+                borderWidth: 2.5,
+                pointBackgroundColor: '#00d4ff',
+                pointBorderColor: '#00d4ff',
+                pointBorderWidth: 2,
+                pointRadius: 5,
+                pointHoverRadius: 7,
+                tension: 0.3,
+                fill: false
+              },
+              {
+                label: 'Cobrado',
+                data: chartData.cobrado || [],
+                borderColor: '#48bb78',
+                backgroundColor: 'rgba(72, 187, 120, 0.15)',
+                borderWidth: 2.5,
+                pointBackgroundColor: '#48bb78',
+                pointBorderColor: '#48bb78',
+                pointBorderWidth: 2,
+                pointRadius: 5,
+                pointHoverRadius: 7,
+                tension: 0.3,
+                fill: true
+              },
+              {
+                label: 'Saldo',
+                data: chartData.saldo || [],
+                borderColor: '#ff6b35',
+                backgroundColor: 'rgba(255, 107, 53, 0.15)',
+                borderWidth: 2.5,
+                pointBackgroundColor: '#ff6b35',
+                pointBorderColor: '#ff6b35',
+                pointBorderWidth: 2,
+                pointRadius: 5,
+                pointHoverRadius: 7,
+                tension: 0.3,
+                fill: true
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+              intersect: false,
+              mode: 'index'
+            },
+            plugins: {
+              legend: {
+                position: 'top',
+                align: 'start',
+                labels: {
+                  color: '#a0aec0',
+                  font: { family: 'Inter', size: 12, weight: '500' },
+                  usePointStyle: true,
+                  pointStyle: 'circle',
+                  padding: 20
+                }
+              },
+              tooltip: {
+                backgroundColor: 'rgba(15, 19, 35, 0.95)',
+                titleColor: '#e2e8f0',
+                bodyColor: '#a0aec0',
+                borderColor: '#2d3748',
+                borderWidth: 1,
+                padding: 12,
+                titleFont: { family: 'Inter', size: 13, weight: '600' },
+                bodyFont: { family: 'Inter', size: 12 },
+                callbacks: {
+                  label: function(context) {
+                    let value = Number(context.parsed.y);
+                    let formatted = '';
+                    if (value >= 1000000) {
+                      formatted = 'S/ ' + (value/1000000).toFixed(1) + ' mill.';
+                    } else if (value >= 1000) {
+                      formatted = 'S/ ' + (value/1000).toFixed(0) + ' mil';
+                    } else {
+                      formatted = 'S/ ' + value.toLocaleString('es-PE', {minimumFractionDigits: 2});
+                    }
+                    return context.dataset.label + ': ' + formatted;
+                  }
+                }
+              }
+            },
+            scales: {
+              x: {
+                grid: { color: 'rgba(255,255,255,0.04)', drawBorder: false },
+                ticks: { color: '#a0aec0', font: { family: 'Inter', size: 11 } }
+              },
+              y: {
+                grid: { color: 'rgba(255,255,255,0.04)', drawBorder: false },
+                ticks: {
+                  color: '#a0aec0',
+                  font: { family: 'Inter', size: 11 },
+                  callback: function(value) {
+                    if (value >= 1000000) return 'S/ ' + (value/1000000).toFixed(1) + ' mill.';
+                    if (value >= 1000) return 'S/ ' + (value/1000).toFixed(0) + ' mil';
+                    return 'S/ ' + value;
+                  }
+                }
+              }
+            }
+          }
+        });
+      }
+    });
+  </script>
+
+  <style>
+    *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+    :root {
+      --bg-primary: #0f1323;
+      --bg-secondary: #1a2035;
+      --bg-card: #1e2642;
+      --bg-table-header: #252d4a;
+      --text-primary: #e2e8f0;
+      --text-secondary: #a0aec0;
+      --text-muted: #718096;
+      --accent-blue: #00d4ff;
+      --accent-orange: #ff6b35;
+      --accent-green: #48bb78;
+      --accent-purple: #9f7aea;
+      --accent-cyan: #0bc5ea;
+      --border-color: #2d3748;
+      --shadow-glow: 0 0 20px rgba(0,212,255,0.1);
+      --radius-md: 8px;
+      --radius-lg: 12px;
+      --transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    .dashboard-container { max-width:1400px; margin:0 auto; padding:24px 32px; }
+
+    .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:24px; }
+    .header-left h1 {
+      font-size:2rem; font-weight:800;
+      background: linear-gradient(135deg, #e2e8f0, #a0aec0);
+      -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+      letter-spacing:-0.5px;
+    }
+    .header-left p { color:var(--text-secondary); font-size:0.9rem; margin-top:4px; }
+    .header-right { text-align:right; }
+    .header-right .datetime { font-size:0.75rem; color:var(--accent-cyan); margin-bottom:8px; }
+
+    .filters-panel { display:flex; flex-direction:column; gap:8px; }
+    .filter-group {
+      background:var(--bg-card); border:1px solid var(--border-color);
+      border-radius:var(--radius-md); padding:10px 14px;
+    }
+    .filter-group label {
+      display:block; font-size:0.7rem; font-weight:600; color:var(--text-secondary);
+      text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;
+    }
+    .filter-group select {
+      width:100%; background:var(--bg-secondary); color:var(--text-primary);
+      border:1px solid var(--border-color); border-radius:4px; padding:6px 10px;
+      font-family:'Inter',sans-serif; font-size:0.85rem; cursor:pointer; outline:none;
+      transition:var(--transition);
+    }
+    .filter-group select:hover, .filter-group select:focus { border-color:var(--accent-blue); }
+    .filter-group select:focus { box-shadow:0 0 0 2px rgba(0,212,255,0.2); }
+
+    .tabs {
+      display:flex; gap:4px; margin-bottom:24px; background:var(--bg-secondary);
+      border-radius:var(--radius-md); padding:4px; width:fit-content;
+    }
+    .tab-btn {
+      padding:8px 24px; border:none; border-radius:6px; background:transparent;
+      color:var(--text-secondary); font-family:'Inter',sans-serif; font-size:0.9rem;
+      font-weight:500; cursor:pointer; transition:var(--transition);
+    }
+    .tab-btn:hover { color:var(--text-primary); background:rgba(255,255,255,0.05); }
+    .tab-btn.active {
+      background:var(--bg-card); color:var(--text-primary);
+      box-shadow:0 2px 8px rgba(0,0,0,0.2);
+    }
+
+    .kpi-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:24px; }
+    .kpi-card {
+      background:var(--bg-card); border:1px solid var(--border-color);
+      border-radius:var(--radius-lg); padding:20px 24px; text-align:center;
+      transition:var(--transition); position:relative; overflow:hidden;
+      animation: fadeInUp 0.5s ease-out forwards;
+    }
+    .kpi-card::before {
+      content:''; position:absolute; top:0; left:0; right:0; height:3px;
+      border-radius:var(--radius-lg) var(--radius-lg) 0 0;
+    }
+    .kpi-card:nth-child(1)::before { background:var(--accent-blue); }
+    .kpi-card:nth-child(2)::before { background:var(--accent-orange); }
+    .kpi-card:nth-child(3)::before { background:var(--accent-cyan); }
+    .kpi-card:nth-child(4)::before { background:var(--accent-purple); }
+    .kpi-card:hover { transform:translateY(-2px); box-shadow:var(--shadow-glow); border-color:rgba(0,212,255,0.3); }
+    .kpi-card:nth-child(2) { animation-delay:0.05s; }
+    .kpi-card:nth-child(3) { animation-delay:0.1s; }
+    .kpi-card:nth-child(4) { animation-delay:0.15s; }
+
+    .kpi-value { font-size:1.6rem; font-weight:700; margin-bottom:6px; letter-spacing:-0.5px; }
+    .kpi-card:nth-child(1) .kpi-value { color:var(--accent-blue); }
+    .kpi-card:nth-child(2) .kpi-value { color:var(--accent-orange); }
+    .kpi-card:nth-child(3) .kpi-value { color:var(--accent-cyan); }
+    .kpi-card:nth-child(4) .kpi-value { color:var(--accent-purple); }
+    .kpi-label { font-size:0.8rem; color:var(--text-secondary); font-weight:500; }
+
+    .table-section {
+      background:var(--bg-card); border:1px solid var(--border-color);
+      border-radius:var(--radius-lg); overflow:hidden; margin-bottom:24px;
+      animation: fadeInUp 0.5s ease-out forwards;
+    }
+    .table-header { padding:16px 20px; border-bottom:1px solid var(--border-color); }
+    .table-header h3 { font-size:1rem; font-weight:600; color:var(--text-primary); }
+    .table-header p { font-size:0.75rem; color:var(--text-muted); margin-top:2px; }
+
+    .table-wrapper { max-height:500px; overflow-y:auto; }
+    .table-wrapper::-webkit-scrollbar { width:6px; }
+    .table-wrapper::-webkit-scrollbar-track { background:var(--bg-secondary); }
+    .table-wrapper::-webkit-scrollbar-thumb { background:var(--border-color); border-radius:3px; }
+
+    .data-table { width:100%; border-collapse:collapse; }
+    .data-table thead th {
+      background:var(--bg-table-header); padding:12px 16px; text-align:left;
+      font-size:0.8rem; font-weight:600; color:var(--text-secondary);
+      text-transform:uppercase; letter-spacing:0.5px; position:sticky; top:0; z-index:10;
+      border-bottom:2px solid var(--border-color);
+    }
+    .data-table tbody tr {
+      border-bottom:1px solid rgba(255,255,255,0.03); transition:var(--transition);
+    }
+    .data-table tbody tr:nth-child(even) { background:rgba(255,255,255,0.02); }
+    .data-table tbody tr:hover { background:rgba(0,212,255,0.05); }
+    .data-table tbody td { padding:10px 16px; font-size:0.85rem; color:var(--text-primary); }
+    .data-table tfoot td {
+      background:var(--bg-table-header); padding:12px 16px; font-size:0.85rem;
+      font-weight:700; color:var(--text-primary); border-top:2px solid var(--accent-blue);
+      position:sticky; bottom:0;
+    }
+
+    .text-right { text-align:right; }
+    .text-center { text-align:center; }
+
+    .chart-section {
+      background:var(--bg-card); border:1px solid var(--border-color);
+      border-radius:var(--radius-lg); padding:20px; margin-bottom:24px;
+      animation: fadeInUp 0.5s ease-out forwards;
+    }
+    .chart-section h3 { font-size:1rem; font-weight:600; color:var(--text-primary); margin-bottom:16px; }
+    .chart-container { position:relative; height:400px; }
+
+    .status-badge {
+      display:inline-block; padding:3px 10px; border-radius:12px;
+      font-size:0.7rem; font-weight:600; letter-spacing:0.3px;
+    }
+    .status-paid { background:rgba(72,187,120,0.15); color:#48bb78; border:1px solid rgba(72,187,120,0.3); }
+    .status-pending { background:rgba(255,107,53,0.12); color:#ff6b35; border:1px solid rgba(255,107,53,0.3); }
+
+    /* === LOADING OVERLAY === */
+    #global-loader {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(15, 19, 35, 0.7);
+      backdrop-filter: blur(4px);
+      z-index: 9999;
+      display: none; /* Hidden by default */
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent-blue);
+    }
+    #global-loader.active { display: flex; }
+    
+    .spinner {
+      width: 50px; height: 50px;
+      border: 3px solid rgba(0, 212, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: var(--accent-blue);
+      animation: spin 1s ease-in-out infinite;
+      margin-bottom: 16px;
+    }
+    
+    .loading-text {
+      font-size: 0.9rem; font-weight: 600; color: var(--text-primary);
+      letter-spacing: 0.5px; animation: pulse 1.5s infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+    @keyframes fadeInUp {
+      from { opacity:0; transform:translateY(16px); }
+      to { opacity:1; transform:translateY(0); }
+    }
+
+    @media (max-width:1024px) { .kpi-grid { grid-template-columns:repeat(2,1fr); } }
+    @media (max-width:768px) {
+      .dashboard-container { padding:16px; }
+      .header { flex-direction:column; gap:16px; }
+      .header-right { text-align:left; }
+      .kpi-grid { grid-template-columns:1fr; }
+      .header-left h1 { font-size:1.5rem; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Loader Overlay -->
+  <div id="global-loader">
+    <div class="spinner"></div>
+    <div class="loading-text">Cargando Datos...</div>
+  </div>
+
+  <script>
+    // Mostrar loader en navegación Turbo
+    document.addEventListener("turbo:visit", () => {
+      document.getElementById("global-loader").classList.add("active");
+    });
+    
+    // Escuchar cuando Turbo termina de cargar para ocultar el loader
+    document.addEventListener("turbo:load", () => {
+      document.getElementById("global-loader").classList.remove("active");
+    });
+
+    // Función global para mostrar el loader manualmente
+    window.showLoader = function() {
+      document.getElementById("global-loader").classList.add("active");
+    };
+    
+    // Función global para ocultar el loader manualmente
+    window.hideLoader = function() {
+      document.getElementById("global-loader").classList.remove("active");
+    };
+  </script>
+
+  <%= yield %>
+</body>
+</html>

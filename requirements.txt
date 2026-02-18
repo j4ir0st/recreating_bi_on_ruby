@@ -1,0 +1,30 @@
+# System Dependencies (Debian/Ubuntu based in Docker)
+ruby=3.2.2
+build-essential
+git
+libvips
+pkg-config
+curl
+nodejs
+npm
+
+# Ruby Gems (Application Dependencies)
+rails~>7.1
+puma>=5.0
+turbo-rails
+stimulus-rails
+importmap-rails
+faraday (HTTP Client for API)
+chartkick (Charts)
+jbuilder (JSON Builder)
+bootsnap (Boot optimizer)
+sprockets-rails (Asset Pipeline)
+tzinfo-data
+debug (Development)
+web-console (Development)
+
+# Frontend CDN Dependencies
+chart.js@4.4.1 (via CDN)
+@hotwired/turbo@7.3.0 (via CDN)
+@hotwired/stimulus@3.2.2 (via CDN)
+Inter Font (via Google Fonts CDN)

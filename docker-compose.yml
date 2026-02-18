@@ -1,0 +1,14 @@
+services:
+  web:
+    build: .
+    volumes:
+      - .:/rails
+    ports:
+      - "3000:3000"
+    environment:
+      - RAILS_ENV=development
+      - API_BASE_URL=http://host.docker.internal:8002
+      - API_USERNAME=user
+      - API_PASSWORD=client123
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

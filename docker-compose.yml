@@ -3,12 +3,16 @@ services:
     build: .
     volumes:
       - .:/rails
+    # Ejecutar como root para evitar problemas de permisos en Windows con volúmenes montados
+    user: root
+    # Asegurar que se escuche en todas las interfaces (0.0.0.0) y limpiar PID previo
+    command: /bin/sh -c "rm -f tmp/pids/server.pid && ./bin/rails server -b 0.0.0.0"
     ports:
       - "3000:3000"
     environment:
       - RAILS_ENV=development
-      - API_BASE_URL=http://host.docker.internal:8002
-      - API_USERNAME=user
-      - API_PASSWORD=client123
+      # URL de la API de Producción
+      - API_BASE_URL=https://appsurgicorperu.com
+      # Credenciales eliminadas por seguridad - Se usa Login de Usuario
     extra_hosts:
       - "host.docker.internal:host-gateway"

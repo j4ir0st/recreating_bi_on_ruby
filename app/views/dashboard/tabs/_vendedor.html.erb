@@ -1,40 +1,120 @@
-<!-- Tab de Vendedor: Resumen por Vendedor -->
+<!-- Tab de Vendedor: Resumen o Detalle -->
 <div class="table-section">
-  <div class="table-header">
-    <h3>Resumen por Vendedor</h3>
-    <p>Montos agrupados por vendedor</p>
-  </div>
-  <div class="table-wrapper">
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>Vendedor</th>
-          <th class="text-right">Monto Total (S/)</th>
-          <th class="text-right">Cobrado (S/)</th>
-          <th class="text-right">Saldo (S/)</th>
-          <th class="text-center">Comprobantes</th>
-        </tr>
-      </thead>
-      <tbody>
-        <% (vendor_data || []).each do |vd| %>
+  <% if params[:vendor].present? && params[:vendor] != "Todas" %>
+    <!-- VISTA DETALLADA: Items por Factura para el Vendedor Seleccionado -->
+    <div class="table-header" style="display: flex; justify-content: space-between; align-items: center;">
+      <div>
+        <h3>Detalle de Ventas - <%= params[:vendor] %></h3>
+        <p>Desglose por producto y factura</p>
+      </div>
+      <button data-action="click->dashboard#exportToExcel" class="btn-excel" title="Descargar Excel">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
+        Exportar Excel
+      </button>
+    </div>
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead>
           <tr>
-            <td><%= vd[:vendedor] %></td>
-            <td class="text-right">S/ <%= number_with_delimiter(vd[:monto_soles].round(2), delimiter: '.', separator: ',') rescue '0,00' %></td>
-            <td class="text-right">S/ <%= number_with_delimiter(vd[:cobrado].round(2), delimiter: '.', separator: ',') rescue '0,00' %></td>
-            <td class="text-right">S/ <%= number_with_delimiter(vd[:saldo].round(2), delimiter: '.', separator: ',') rescue '0,00' %></td>
-            <td class="text-center"><%= vd[:count] %></td>
+            <th style="width: 120px;">N° Factura</th>
+            <th style="width: 85px;">Fecha</th>
+            <th style="width: 85px;">Cliente</th>
+            <th style="width: 55px;" class="text-center">Can.</th>
+            <th>Producto</th>
+            <th class="text-right" style="width: 135px;">Precio (S/)</th>
+            <th class="text-center" style="width: 120px;">Comisión %</th>
+            <th class="text-right" style="width: 135px;">Comisión (S/)</th>
           </tr>
-        <% end %>
-      </tbody>
-      <tfoot>
-        <tr>
-          <td><strong>Total</strong></td>
-          <td class="text-right"><strong>S/ <%= number_with_delimiter(dashboard[:total_monto].round(2), delimiter: '.', separator: ',') rescue '0,00' %></strong></td>
-          <td class="text-right"><strong>S/ <%= number_with_delimiter(dashboard[:total_cobrado].round(2), delimiter: '.', separator: ',') rescue '0,00' %></strong></td>
-          <td class="text-right"><strong>S/ <%= number_with_delimiter(dashboard[:total_saldo].round(2), delimiter: '.', separator: ',') rescue '0,00' %></strong></td>
-          <td class="text-center"><strong><%= dashboard[:total_comprobantes] %></strong></td>
-        </tr>
-      </tfoot>
-    </table>
-  </div>
+        </thead>
+        <tbody>
+          <% (@vendor_details || []).each do |item| %>
+            <tr>
+              <td><%= item[:numero_factura] %></td>
+              <td><%= item[:fecha_emision] %></td>
+              <td><span title="<%= item[:tipo_cliente] %>"><%= item[:tipo_cliente] %></span></td>
+              <td class="text-center">
+                <% if item[:cancelado] == "S" %>
+                  <span class="status-badge status-paid" title="Cancelado">S</span>
+                <% else %>
+                  <span class="status-badge status-pending" title="Pendiente">N</span>
+                <% end %>
+              </td>
+              <td data-product-code="<%= item[:producto_codigo] %>" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                <span class="product-name" title="<%= item[:producto_codigo] %>">
+                  <%= item[:producto_codigo] %>
+                </span>
+              </td>
+              <td class="text-right" style="white-space: nowrap; font-weight: 600;">
+                S/ <%= number_with_precision(item[:precio_soles].to_f, precision: 2, separator: '.', delimiter: ',') %>
+              </td>
+              <td class="text-center">
+                <%= number_with_precision(item[:comision_pct].to_f * 100, precision: 2) %>%
+              </td>
+              <td class="text-right" style="white-space: nowrap;">
+                <strong style="color: var(--accent-cyan);">S/ <%= number_with_precision(item[:comision_soles].to_f, precision: 2, separator: '.', delimiter: ',') %></strong>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="5"><strong>Total Periodo (<%= @selected_month %>)</strong></td>
+            <td class="text-right" style="white-space: nowrap;">
+              <strong>S/ <%= number_with_precision((@vendor_details || []).sum { |i| i[:precio_soles].to_f }, precision: 2, separator: '.', delimiter: ',') %></strong>
+            </td>
+            <td></td>
+            <td class="text-right" style="white-space: nowrap;">
+              <strong style="color: var(--accent-cyan); font-size: 1.1rem;">S/ <%= number_with_precision((@vendor_details || []).sum { |i| i[:comision_soles].to_f }, precision: 2, separator: '.', delimiter: ',') %></strong>
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+  <% else %>
+    <!-- VISTA RESUMEN: Lista de Vendedores -->
+    <div class="table-header" style="display: flex; justify-content: space-between; align-items: center;">
+      <div>
+        <h3>Resumen por Vendedor</h3>
+        <p>Montos agrupados por vendedor</p>
+      </div>
+      <button data-action="click->dashboard#exportToExcel" class="btn-excel" title="Descargar Excel">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
+        Exportar Excel
+      </button>
+    </div>
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Vendedor</th>
+            <th class="text-right">Monto Total (S/)</th>
+            <th class="text-right">Cobrado (S/)</th>
+            <th class="text-right">Saldo (S/)</th>
+            <th class="text-center">Comprobantes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% (@vendor_data || []).each do |vd| %>
+            <tr>
+              <td><%= vd[:vendedor] %></td>
+              <td class="text-right">S/ <%= number_with_delimiter(vd[:monto_soles].round(2), delimiter: '.', separator: ',') rescue '0,00' %></td>
+              <td class="text-right">S/ <%= number_with_delimiter(vd[:cobrado].round(2), delimiter: '.', separator: ',') rescue '0,00' %></td>
+              <td class="text-right">S/ <%= number_with_delimiter(vd[:saldo].round(2), delimiter: '.', separator: ',') rescue '0,00' %></td>
+              <td class="text-center"><%= vd[:count] %></td>
+            </tr>
+          <% end %>
+        </tbody>
+        <tfoot>
+          <tr>
+            <td><strong>Total</strong></td>
+            <td class="text-right"><strong>S/ <%= number_with_delimiter(dashboard[:total_monto].round(2), delimiter: '.', separator: ',') rescue '0,00' %></strong></td>
+            <td class="text-right"><strong>S/ <%= number_with_delimiter(dashboard[:total_cobrado].round(2), delimiter: '.', separator: ',') rescue '0,00' %></strong></td>
+            <td class="text-right"><strong>S/ <%= number_with_delimiter(dashboard[:total_saldo].round(2), delimiter: '.', separator: ',') rescue '0,00' %></strong></td>
+            <td class="text-center"><strong><%= dashboard[:total_comprobantes] %></strong></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  <% end %>
 </div>

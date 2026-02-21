@@ -6,79 +6,78 @@
       <p>Gestiona y calcula comisiones de vendedores por mes</p>
     </div>
     <div class="header-right">
-      <div class="datetime"><%= Time.now.strftime("%d/%m/%Y %I:%M:%S %p") %></div>
-      <div class="filters-panel">
-        <div class="filter-group">
-          <label>Año</label>
-          <select data-dashboard-target="yearSelect" data-action="change->dashboard#filterChanged">
-            <% (@years || []).each do |year| %>
-              <option value="<%= year %>" <%= 'selected' if @selected_year == year %>><%= year %></option>
-            <% end %>
-          </select>
-        </div>
-        <div class="filter-group">
-          <label>Mes</label>
-          <select data-dashboard-target="dateSelect" data-action="change->dashboard#filterChanged">
-            <option value="Todas" <%= 'selected' if @selected_month == 'Todas' %>>Todas</option>
-            <% (@dates || []).each do |month| %>
-              <option value="<%= month %>" <%= 'selected' if @selected_month == month %>><%= month %></option>
-            <% end %>
-          </select>
-        </div>
-        <% if @active_tab == "vendedor" || @active_tab == "reporte" %>
+      <div style="display:flex; flex-direction: row; align-items: center; gap: 20px;">
+      <form id="filter-form" style="display: contents;">
+        <div class="filters-panel">
+          <div class="filter-group">
+            <label>Año</label>
+            <select name="year" data-dashboard-target="yearSelect" data-action="change->dashboard#filterChanged">
+              <% (@years || []).each do |year| %>
+                <option value="<%= year %>" <%= 'selected' if @selected_year == year %>><%= year %></option>
+              <% end %>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label>Mes</label>
+            <select name="date_range" data-dashboard-target="dateSelect" data-action="change->dashboard#filterChanged">
+              <option value="Todas" <%= 'selected' if @selected_month == 'Todas' %>>Todas</option>
+              <% (@dates || []).each do |month| %>
+                <option value="<%= month %>" <%= 'selected' if @selected_month == month %>><%= month %></option>
+              <% end %>
+            </select>
+          </div>
           <div class="filter-group">
             <label>Vendedor</label>
-            <select data-dashboard-target="vendorSelect" data-action="change->dashboard#filterChanged">
+            <select name="vendor" data-dashboard-target="vendorSelect" data-action="change->dashboard#filterChanged" style="max-width: 250px;">
               <option value="Todas" <%= 'selected' if params[:vendor].blank? || params[:vendor] == 'Todas' %>>Todas</option>
               <% (@vendors || []).each do |vendor| %>
                 <option value="<%= vendor %>" <%= 'selected' if params[:vendor] == vendor %>><%= vendor %></option>
               <% end %>
             </select>
           </div>
-        <% end %>
+          <div class="filter-group">
+            <label>Cancelado</label>
+            <select name="cancelado" data-dashboard-target="canceladoSelect" data-action="change->dashboard#filterChanged">
+              <option value="Todo" <%= 'selected' if @selected_cancelado == 'Todo' %>>Todo</option>
+              <option value="S" <%= 'selected' if @selected_cancelado == 'S' %>>S</option>
+              <option value="N" <%= 'selected' if @selected_cancelado == 'N' %>>N</option>
+            </select>
+          </div>
+        </div>
+      </form>
+        
+        <div style="display: flex; flex-direction: row; align-items: center; gap: 12px;">
+          
+          <div style="text-align: right;">
+            <div class="welcome-msg" style="color: var(--accent-cyan); font-weight: 600; font-size: 0.9rem;">Bienvenido, <%= session[:username] || "Usuario" %></div>
+            <%= button_to "Cerrar Sesión", logout_path, method: :delete, class: "btn-logout", style: "background: transparent; border: 1px solid var(--accent-orange); color: var(--accent-orange); padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; cursor: pointer;" %>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 
   <!-- Tabs -->
   <div class="tabs">
-    <button class="tab-btn <%= 'active' if @active_tab == 'panel' %>"
-            data-tab="panel"
-            data-action="click->dashboard#switchTab">Panel</button>
     <button class="tab-btn <%= 'active' if @active_tab == 'vendedor' %>"
             data-tab="vendedor"
             data-action="click->dashboard#switchTab">Vendedor</button>
+    <button class="tab-btn <%= 'active' if @active_tab == 'productos' %>"
+            data-tab="productos"
+            data-action="click->dashboard#switchTab">Productos</button>
     <button class="tab-btn <%= 'active' if @active_tab == 'reporte' %>"
             data-tab="reporte"
             data-action="click->dashboard#switchTab">Reportes</button>
   </div>
 
-  <!-- KPI Cards -->
-  <div class="kpi-grid">
-    <div class="kpi-card">
-      <div class="kpi-value">S/ <%= number_with_delimiter(@dashboard[:total_monto].round(0), delimiter: '.') rescue '0' %></div>
-      <div class="kpi-label">Monto Total (Soles)</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-value">S/ <%= number_with_delimiter(@dashboard[:total_cobrado].round(0), delimiter: '.') rescue '0' %></div>
-      <div class="kpi-label">Total Cobrado</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-value">S/ <%= number_with_delimiter(@dashboard[:total_saldo].round(0), delimiter: '.') rescue '0' %></div>
-      <div class="kpi-label">Saldo Pendiente</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-value"><%= number_with_delimiter(@dashboard[:total_comprobantes], delimiter: '.') rescue '0' %></div>
-      <div class="kpi-label">Comprobantes</div>
-    </div>
-  </div>
+  <!-- KPI Cards removed as per user request -->
 
   <!-- Tab Content -->
   <div data-dashboard-target="content">
-    <% if @active_tab == "panel" %>
-      <%= render partial: "dashboard/tabs/panel", locals: { dashboard: @dashboard, details: @details } %>
-    <% elsif @active_tab == "vendedor" %>
+    <% if @active_tab == "vendedor" %>
       <%= render partial: "dashboard/tabs/vendedor", locals: { dashboard: @dashboard, vendor_data: @vendor_data } %>
+    <% elsif @active_tab == "productos" %>
+      <%= render partial: "dashboard/tabs/productos", locals: { dashboard: @dashboard, details: @product_details } %>
     <% elsif @active_tab == "reporte" %>
       <%= render partial: "dashboard/tabs/reporte", locals: { dashboard: @dashboard, monthly_data: @monthly_data } %>
     <% end %>

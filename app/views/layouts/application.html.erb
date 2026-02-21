@@ -13,6 +13,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- SheetJS para Exportación a Excel -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
   <script type="module">
     import * as Turbo from "https://cdn.skypack.dev/@hotwired/turbo@7.3.0";
@@ -22,43 +24,76 @@
 
     // Controlador Stimulus del Dashboard
     application.register("dashboard", class extends Controller {
-      static targets = ["content", "vendorSelect", "dateSelect", "yearSelect"]
+      static targets = ["content", "vendorSelect", "dateSelect", "yearSelect", "canceladoSelect"]
 
       connect() {
         // Recuperar la pestaña activa actual
-        this.currentTab = document.querySelector('.tab-btn.active')?.dataset.tab || "panel";
+        this.currentTab = document.querySelector('.tab-btn.active')?.dataset.tab || "vendedor";
+        this.loadProductDescriptions();
       }
 
-      // Método para cambiar de pestaña
-      switchTab(event) {
-        event.preventDefault();
-        // Mostrar indicador de carga
-        if (window.showLoader) window.showLoader();
+      switchTab(e) {
+        const tab = e.currentTarget.dataset.tab;
+        if (!tab) return;
         
-        const tab = event.currentTarget.dataset.tab;
         this.currentTab = tab;
+        
+        // UI Feedback
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        e.currentTarget.classList.add('active');
 
-        // Actualizar clases CSS para estado activo
-        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-        event.currentTarget.classList.add('active');
+        if (window.showLoader) window.showLoader();
 
-        // Obtener valores de los filtros
-        const vendor = this.hasVendorSelectTarget ? this.vendorSelectTarget.value : "";
-        const dateRange = this.hasDateSelectTarget ? this.dateSelectTarget.value : "";
-        const year = this.hasYearSelectTarget ? this.yearSelectTarget.value : "";
+        const form = document.getElementById('filter-form');
+        const params = new URLSearchParams(new FormData(form));
+        params.set('tab', tab);
 
-        // Petición AJAX para obtener el HTML de la pestaña
-        fetch(`/${tab}?vendor=${encodeURIComponent(vendor)}&date_range=${encodeURIComponent(dateRange)}&year=${encodeURIComponent(year)}`, {
-          headers: { "Accept": "text/html" }
+        fetch(`/${tab}?${params.toString()}`, {
+          headers: { "X-Requested-With": "XMLHttpRequest" }
         })
-        .then(r => r.text())
-        .then(html => {
-          this.contentTarget.innerHTML = html;
-          if (window.hideLoader) window.hideLoader(); // Ocultar carga
-        })
-        .catch(() => {
-          if (window.hideLoader) window.hideLoader();
-        });
+          .then(r => {
+            if (!r.ok) throw new Error("No se pudo cargar la pestaña");
+            return r.text();
+          })
+          .then(html => {
+            if (this.hasContentTarget) {
+              this.contentTarget.innerHTML = html;
+            }
+            if (window.hideLoader) window.hideLoader();
+            this.loadProductDescriptions();
+          })
+          .catch(err => {
+            console.error("Tab Error:", err);
+            if (window.hideLoader) window.hideLoader();
+            this.showToast("No se pudo cargar la información: El servidor encontró un problema.");
+          });
+      }
+
+      showToast(message, type = 'error') {
+        const container = document.getElementById('toast-container');
+        if (!container) return;
+
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.innerHTML = `
+          <span class="toast-icon">⚠️</span>
+          <div class="toast-content">${message}</div>
+        `;
+        
+        toast.onclick = () => {
+          toast.style.animation = 'toastFadeOut 0.3s forwards';
+          setTimeout(() => toast.remove(), 300);
+        };
+
+        container.appendChild(toast);
+
+        // Auto remove
+        setTimeout(() => {
+          if (toast.parentNode) {
+            toast.style.animation = 'toastFadeOut 0.3s forwards';
+            setTimeout(() => toast.remove(), 300);
+          }
+        }, 5000);
       }
 
       // Método llamado al cambiar filtros
@@ -67,9 +102,43 @@
         const vendor = this.hasVendorSelectTarget ? this.vendorSelectTarget.value : "";
         const dateRange = this.hasDateSelectTarget ? this.dateSelectTarget.value : "";
         const year = this.hasYearSelectTarget ? this.yearSelectTarget.value : "";
+        const cancelado = this.hasCanceladoSelectTarget ? this.canceladoSelectTarget.value : "Todo";
         
         // Recargar página con nuevos parámetros (GET)
-        window.location.href = `/?tab=${this.currentTab}&vendor=${encodeURIComponent(vendor)}&date_range=${encodeURIComponent(dateRange)}&year=${encodeURIComponent(year)}`;
+        window.location.href = `/?tab=${this.currentTab}&vendor=${encodeURIComponent(vendor)}&date_range=${encodeURIComponent(dateRange)}&year=${encodeURIComponent(year)}&cancelado=${encodeURIComponent(cancelado)}`;
+      }
+
+      // Carga asíncrona de descripciones de productos
+      loadProductDescriptions() {
+        const slots = document.querySelectorAll('[data-product-code]');
+        if (slots.length === 0) return;
+
+        fetch('/products')
+          .then(r => r.json())
+          .then(products => {
+            slots.forEach(slot => {
+              const code = slot.dataset.productCode;
+              if (products[code]) {
+                const span = slot.querySelector('.product-name');
+                if (span) span.innerText = products[code];
+                slot.title = `${code} - ${products[code]}`;
+              }
+            });
+          })
+          .catch(err => console.error("Error cargando productos:", err));
+      }
+
+      // Exportar tabla a Excel
+      exportToExcel() {
+        const table = document.querySelector('.data-table');
+        if (!table) {
+          alert("No hay tabla para exportar");
+          return;
+        }
+
+        const wb = XLSX.utils.table_to_book(table, { sheet: "Comisiones" });
+        const fileName = `Comisiones_${this.currentTab}_${new Date().toISOString().slice(0,10)}.xlsx`;
+        XLSX.writeFile(wb, fileName);
       }
     });
 
@@ -253,7 +322,7 @@
     .header-right { text-align:right; }
     .header-right .datetime { font-size:0.75rem; color:var(--accent-cyan); margin-bottom:8px; }
 
-    .filters-panel { display:flex; flex-direction:column; gap:8px; }
+    .filters-panel { display:flex; flex-direction:row; gap:12px; }
     .filter-group {
       background:var(--bg-card); border:1px solid var(--border-color);
       border-radius:var(--radius-md); padding:10px 14px;
@@ -275,6 +344,17 @@
       display:flex; gap:4px; margin-bottom:24px; background:var(--bg-secondary);
       border-radius:var(--radius-md); padding:4px; width:fit-content;
     }
+    .btn-excel {
+      background: rgba(72,187,120,0.1); color: var(--accent-green);
+      border: 1px solid rgba(72,187,120,0.3); border-radius: var(--radius-md);
+      padding: 6px 12px; font-size: 0.8rem; font-weight: 600; cursor: pointer;
+      display: flex; align-items: center; gap: 8px; transition: var(--transition);
+    }
+    .btn-excel:hover { 
+      background: var(--accent-green); color: white; 
+      box-shadow: 0 0 15px rgba(72,187,120,0.4); 
+    }
+
     .tab-btn {
       padding:8px 24px; border:none; border-radius:6px; background:transparent;
       color:var(--text-secondary); font-family:'Inter',sans-serif; font-size:0.9rem;
@@ -408,6 +488,34 @@
       .kpi-grid { grid-template-columns:1fr; }
       .header-left h1 { font-size:1.5rem; }
     }
+
+    /* Toast Notification Styles */
+    .toast-container {
+      position: fixed; top: 20px; right: 20px; z-index: 9999;
+      display: flex; flex-direction: column; gap: 10px; pointer-events: none;
+    }
+    .toast {
+      pointer-events: auto; padding: 16px 24px; border-radius: 12px;
+      backdrop-filter: blur(10px); color: white; min-width: 300px;
+      display: flex; align-items: center; gap: 15px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+      animation: toastSlideIn 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+      font-family: 'Inter', sans-serif; font-size: 0.9rem; font-weight: 500;
+    }
+    .toast-error { 
+      background: rgba(239, 68, 68, 0.9); border: 1px solid rgba(255,255,255,0.2);
+      box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
+    }
+    .toast-icon { font-size: 1.2rem; }
+    
+    @keyframes toastSlideIn {
+      from { transform: translateX(120%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    @keyframes toastFadeOut {
+      from { transform: translateX(0); opacity: 1; }
+      to { transform: translateX(120%); opacity: 0; }
+    }
   </style>
 </head>
 <body>
@@ -415,6 +523,16 @@
   <div id="global-loader">
     <div class="spinner"></div>
     <div class="loading-text">Cargando Datos...</div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="toast-container">
+    <% if flash[:error_detail] %>
+      <div class="toast toast-error" onclick="this.style.animation='toastFadeOut 0.3s forwards'; setTimeout(()=>this.remove(), 300)">
+        <span class="toast-icon">⚠️</span>
+        <div class="toast-content"><%= flash[:error_detail] %></div>
+      </div>
+    <% end %>
   </div>
 
   <script>

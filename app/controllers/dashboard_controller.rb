@@ -1,13 +1,15 @@
 class DashboardController < ApplicationController
+  rescue_from Exception, with: :handle_unexpected_error
+
   def index
-    @active_tab = params[:tab] || "panel"
+    @active_tab = params[:tab] || "vendedor"
     load_data
   end
 
-  def panel
-    @active_tab = "panel"
+  def productos
+    @active_tab = "productos"
     load_data
-    render partial: "dashboard/tabs/panel", locals: { dashboard: @dashboard, details: @details }
+    render partial: "dashboard/tabs/productos", locals: { dashboard: @dashboard, details: @product_details }
   end
 
   def vendedor
@@ -24,23 +26,31 @@ class DashboardController < ApplicationController
 
   private
 
+  def handle_unexpected_error(exception)
+    Rails.logger.error("DASHBOARD ERROR: #{exception.message}\n#{exception.backtrace.first(10).join("\n")}")
+    
+    error_msg = "Error inesperado: #{exception.message.truncate(100)}"
+    
+    if request.xhr?
+      render inline: "<div class='error-toast-ajax'>#{error_msg}</div>", status: :internal_server_error
+    else
+      redirect_to root_path, flash: { error_detail: error_msg }
+    end
+  end
+
   def load_data
-    # Inicializamos el cliente API con el token de la sesión actual
     client = ApiClient.new(session[:api_token])
 
-    # Determinar rango de fechas seleccionado
     @selected_year = params[:year] || Date.today.year.to_s
+    @selected_cancelado = params[:cancelado] || "Todo"
     
-    # Lógica de Selección de Mes por Defecto:
-    # 1. Si no se selecciona nada (params[:date_range] vacío), intentamos mostrar el mes actual.
-    #    Pero solo si el año seleccionado coincide con el año actual.
     current_month_str = Date.today.strftime("%Y-%m")
     
     if params[:date_range].blank?
       if @selected_year == Date.today.year.to_s
-        @selected_month = current_month_str # Mostrar Mes Actual
+        @selected_month = current_month_str
       else
-        @selected_month = "Todas" # Si es otro año, mostrar "Todas" (o podría ser necesario validar)
+        @selected_month = "Todas" 
       end
     else
       @selected_month = params[:date_range]
@@ -50,57 +60,168 @@ class DashboardController < ApplicationController
     end_date = nil
 
     if @selected_month.present? && @selected_month != "Todas"
-      # Caso: Un mes específico seleccionado (ej: "2026-02")
-      start_date = Date.strptime(@selected_month, "%Y-%m")
-      end_date = start_date.end_of_month
+      # Si el mes es 2026-02, queremos desde 2026-01-24 hasta 2026-02-23
+      base_date = Date.strptime(@selected_month, "%Y-%m")
+      end_date = Date.new(base_date.year, base_date.month, 23)
+      start_date = (end_date - 1.month) + 1.day # Esto nos da el 24 del mes anterior
     else
-      # Caso: "Todas" seleccionado -> Tomamos todo el año completo
       start_date = Date.new(@selected_year.to_i, 1, 1)
       end_date = Date.new(@selected_year.to_i, 12, 31)
     end
 
-    # Formatear fechas para la API
-    # IMPORTANTE: end_date incluye hasta el último segundo del día (23:59:59)
-    # para asegurar que se incluyan registros del último día del mes.
     start_date_str = start_date.strftime("%Y-%m-%d")
     end_date_str = end_date.strftime("%Y-%m-%d 23:59:59")
 
-    # Obtener datos filtrados desde la API (Filtrado en el Servidor / Server-side)
-    # Pedimos hasta 50 páginas (que con page_size=1000 son 50,000 registros),
-    # suficiente para cubrir un mes o un año con actividad normal.
-    api_data = client.fetch_details_pages(max_pages: 50, start_date: start_date_str, end_date: end_date_str)
-    raw_details = api_data[:results] || []
-
-    # Normalizar claves a strings (para consistencia)
-    @details = raw_details.map { |d| d.transform_keys(&:to_s) }
-
-    # Filtro de Negocio: Solo mostrar facturas pagadas (cancelado == 'S')
-    @details = @details.select { |d| d["cancelado"] == "S" }
-
-    # Aplicar filtro de vendedor (Client-side / Filtrado en Cliente)
-    # Esto se hace aquí porque la API podría no soportar filtro directo por vendedor de forma sencilla,
-    # o porque ya tenemos los datos en memoria.
-    if params[:vendor].present? && params[:vendor] != "Todas"
-      @details = @details.select { |d| d["vendedor"] == params[:vendor] }
+    # 1. Obtener Datos Maestros (Cache)
+    @products = Rails.cache.fetch("si_productos", expires_in: 4.hours) do
+      client.fetch_products
+    end
+    @commissions = Rails.cache.fetch("repr_comisiones", expires_in: 12.hours) do
+      client.fetch_commissions
+    end
+    @product_commissions = Rails.cache.fetch("repr_comisiones_prod", expires_in: 12.hours) do
+      client.fetch_product_commissions
     end
 
-    # Calcular KPIs (Indicadores Clave de Desempeño)
+    # Crear mapas de búsqueda rápida
+    @products_map = @products.index_by { |p| p[:codigo].to_s }
+    @commissions_map = @commissions.index_by { |c| c[:nombre].to_s.strip.upcase }
+    @product_commissions_map = @product_commissions.index_by { |pc| pc[:prod].to_s.strip }
+    
+    # 2. Obtener Facturas (Traemos todo el rango de fecha para filtrar en memoria con robustez)
+    api_data = client.fetch_details_pages(
+      max_pages: 50, 
+      start_date: start_date_str, 
+      end_date: end_date_str
+    )
+    raw_details = api_data[:results] || []
+
+    # Normalizar claves de cabeceras
+    @details = raw_details.map { |d| d.transform_keys(&:to_s) }
+    
+    # IMPORTANTE: Filtro manual de fechas en memoria (Backup)
+    if @selected_month.present? && @selected_month != "Todas"
+      @details = @details.select do |d|
+        begin
+          f_emision = Date.parse(d["fecha_emision"].to_s)
+          f_emision >= start_date && f_emision <= end_date
+        rescue
+          true
+        end
+      end
+    end
+
+    # Filtro manual de Cancelado
+    if @selected_cancelado != "Todo"
+      @details = @details.select { |d| d["cancelado"] == @selected_cancelado }
+    end
+    
+    # Mapa de Cabeceras por Numero de Factura para le cruce
+    @invoices_map = @details.index_by { |d| d["nro_fact"] } 
+
+    # Aplicar Filtro de Vendedor (pero mantenemos PAGADAS y PENDIENTES para los KPIs)
+    if params[:vendor].present? && params[:vendor] != "Todas"
+      search_vendedor = params[:vendor].to_s.strip.upcase
+      @details = @details.select { |d| d["vendedor"].to_s.strip.upcase == search_vendedor }
+    end
+
+    # 3. Procesar Datos para Vistas
+    # Calcular KPIs (Basados en Cabeceras)
     @dashboard = calculate_kpis(@details, api_data[:count] || 0)
+    
+    # Agrupar por vendedor (Basado en Cabeceras)
     @vendor_data = group_by_vendor(@details)
     
-    # Agrupar datos para el gráfico de línea
-    # LÓGICA DE GRANULARIDAD:
-    # - Si hay un mes seleccionado -> Agrupar por DÍA (:day) para ver detalle diario.
-    # - Si es "Todas" -> Agrupar por MES (:month) para ver evolución anual.
+    # Gráfico (Basado en Cabeceras)
     granularity = (@selected_month != "Todas") ? :day : :month
     @monthly_data = group_data(@details, granularity)
     
-    # Obtener lista única de vendedores para el filtro
-    @vendors = raw_details.map { |d| d.transform_keys(&:to_s)["vendedor"] }.compact.uniq.sort
+    # 4. Aplanar Datos usando el campo 'fd' (Factura Detalle) anidado
+    @vendor_details = flatten_nested_data(@details, :vendor)
+    @product_details = flatten_nested_data(@details, :product)
+
+    # Listas para filtros
+    if @commissions.present?
+      @vendors = @commissions.map { |c| c[:nombre].to_s.strip }.compact.uniq.sort
+    else
+      @vendors = raw_details.map { |d| d.transform_keys(&:to_s)["vendedor"] }.compact.uniq.sort
+    end
     
-    # Generar lista de años y meses para los selectores del frontend
     @years = ["2025", "2026"]
     @dates = (1..12).map { |m| "#{@selected_year}-#{m.to_s.rjust(2, '0')}" }
+  end
+
+  def flatten_nested_data(invoices, mode = :vendor)
+    flattened_items = []
+
+    invoices.each do |inv|
+      # 'inv' ya tiene las llaves como strings gracias al map previo
+      items = inv["fd"] || []
+      
+      items.each do |item|
+        item = item.transform_keys(&:to_s)
+        
+        # Buscar Descripción del Producto (Usando campos exactos: prod y descripcion)
+        prod_code = item["prod"].to_s.strip
+        
+        product_info = @products_map[prod_code]
+        prod_desc = product_info ? product_info[:descripcion] : prod_code
+
+        # Determinar Comisión
+        comision_pct = 0.0
+
+        if mode == :vendor
+          vendedor_name = inv["vendedor"].to_s.strip.upcase
+          tipo_cliente = inv["tipo_cliente"].to_s.upcase
+          com_info = @commissions_map[vendedor_name]
+          
+          if com_info
+            if tipo_cliente.include?("PRIVADO")
+              comision_pct = (com_info[:comision_priv] || com_info[:comision_privado]).to_f
+            elsif tipo_cliente.include?("PUBLICO")
+              comision_pct = (com_info[:comision_pub] || com_info[:comision_publico]).to_f
+            end
+          end
+        elsif mode == :product
+          # Nueva lógica: Comisión por Producto
+          prod_com_info = @product_commissions_map[prod_code]
+          if prod_com_info
+            # Suponemos que el campo es 'comision' en Repr_Comision_Prod
+            comision_pct = (prod_com_info[:comision] || prod_com_info[:comision_pct]).to_f
+          else
+            # Si el producto no tiene comisión definida, lo saltamos en el modo "Productos"
+            next
+          end
+        end
+
+        precio_item = item["precio_soles"].to_f
+        comision_soles = precio_item * comision_pct
+
+        # Formatear fecha: dd/mm/yyyy
+        raw_date = inv["fecha_emision"]
+        formatted_date = begin
+          Time.parse(raw_date.to_s).strftime("%d/%m/%Y")
+        rescue
+          raw_date
+        end
+
+        flattened_items << {
+          numero_factura: inv["nro_fact"] || inv["numero_factura"],
+          fecha_emision: formatted_date,
+          vendedor: inv["vendedor"],
+          tipo_cliente: inv["tipo_cliente"],
+          cancelado: inv["cancelado"],
+          # Campos del Item (fd)
+          producto_codigo: prod_code,
+          producto_desc: prod_desc,
+          precio_soles: precio_item,
+          comision_pct: comision_pct,
+          comision_soles: comision_soles
+        }
+      end
+    end
+    
+    flattened_items
   end
 
   def calculate_kpis(details, total_api_count)
@@ -160,4 +281,22 @@ class DashboardController < ApplicationController
   end
 
   # filter_by_date eliminado ya que ahora filtramos en el servidor
+
+  def products_json
+    client = ApiClient.new(session[:api_token])
+    products = Rails.cache.fetch("si_productos", expires_in: 4.hours) do
+      client.fetch_products
+    end
+    
+    # Mapear a hash codigo => descripcion (Usando campos exactos: codigo y descripcion)
+    products_map = products.each_with_object({}) do |p, hash|
+      code = p[:codigo]
+      next unless code
+      
+      desc = p[:descripcion] || code.to_s
+      hash[code.to_s.strip] = desc.to_s.strip
+    end
+    
+    render json: products_map
+  end
 end

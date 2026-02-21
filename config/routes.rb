@@ -10,9 +10,10 @@ Rails.application.routes.draw do
 
   # Panel de Control (Dashboard)
   get "dashboard/index"
-  get "panel", to: "dashboard#panel"
+  get "productos", to: "dashboard#productos"
   get "vendedor", to: "dashboard#vendedor"
   get "reporte", to: "dashboard#reporte"
+  get "products", to: "dashboard#products_json"
 
   root "dashboard#index"
 end

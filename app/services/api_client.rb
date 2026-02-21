@@ -2,24 +2,18 @@ class ApiClient
   # CONFIGURACIÓN DE URL DE LA API
   # Para producción, definir la variable de entorno API_BASE_URL en docker-compose.yml
   # Ejemplo Producción: https://surgiapi.com
-  # Ejemplo Desarrollo (Docker): http://host.docker.internal:8002
-  BASE_URL = ENV.fetch("API_BASE_URL", "http://host.docker.internal:8002").freeze
+  # URL base de la API de producción
+  BASE_URL = ENV.fetch("API_BASE_URL", "https://appsurgicorperu.com").freeze
 
   # Método de clase para autenticar al usuario y obtener un token JWT.
-  # Recibe usuario y contraseña, y hace una petición POST a la API de Django.
   def self.authenticate(username, password)
     conn = Faraday.new(url: BASE_URL) do |faraday|
       faraday.request :json
       # El middleware de respuesta JSON se ha eliminado para evitar errores de parseo automáticos.
-      # Se hace el parseo manual más abajo para mayor robustez.
       faraday.adapter Faraday.default_adapter
       
-      # IMPORTANTE: Esta línea fuerza el Host a localhost:8002 para que Django acepte la conexión en entorno LOCAL.
-      # EN PRODUCCIÓN: Si usas un dominio real (ej: surgiapi.com), COMENTA o ELIMINA esta línea,
-      # o asegúrate de que coincida con tu dominio.
-      if Rails.env.development? || BASE_URL.include?("host.docker.internal")
-        faraday.headers["Host"] = "localhost:8002"
-      end
+      # EN PRODUCCIÓN: No forzamos el Host a localhost.
+      # Se deja dinámico o por defecto.
       
       # Se especifica que se espera una respuesta JSON.
       faraday.headers["Accept"] = "application/json"
@@ -28,11 +22,11 @@ class ApiClient
     response = conn.post("/api/token/", { username: username, password: password })
     
     if response.success?
-      # Parseamos manualmente la respuesta para evitar el error "no implicit conversion of Symbol into Integer"
       body = JSON.parse(response.body, symbolize_names: true)
       body[:access] # Retorna el token de acceso
     else
-      Rails.logger.error("Fallo de Autenticación: #{response.status} - #{response.body}")
+      safe_body = response.body.to_s.dup.force_encoding("UTF-8").scrub("?")
+      Rails.logger.error("Fallo de Autenticación: #{response.status} - #{safe_body}")
       nil
     end
   rescue JSON::ParserError => e
@@ -52,25 +46,24 @@ class ApiClient
       end
       
       faraday.headers["Accept"] = "application/json"
-      
-      # IMPORTANTE: Configuración condicional del Host header para desarrollo local vs producción.
-      if Rails.env.development? || BASE_URL.include?("host.docker.internal")
-        faraday.headers["Host"] = "localhost:8002"
-      end
-      
       faraday.adapter Faraday.default_adapter
     end
   end
 
   # Obtiene los detalles de facturas (una sola página).
-  # Soporta filtrado por fecha si se pasan start_date y end_date.
-  # Se usa page_size=1000 para traer más datos por petición y reducir el número de llamadas.
-  def fetch_details(page: 1, start_date: nil, end_date: nil)
-    url = "/Fact_Detalle/?format=json&page=#{page}&page_size=1000"
-    url += "&fecha_emision__gte=#{start_date}" if start_date # Fecha inicio (Mayor o igual)
-    url += "&fecha_emision__lte=#{end_date}" if end_date     # Fecha fin (Menor o igual)
+  # Ahora la API retorna información anidada en 'fd' (Factura Detalle).
+  def fetch_details(page: 1, start_date: nil, end_date: nil, vendor: nil, product_codes: nil)
+    params = { format: :json, page: page, page_size: 1000 }
+    params[:fecha_emision__gte] = start_date if start_date
+    params[:fecha_emision__lte] = end_date if end_date
+    params[:vendedor] = vendor if vendor.present? && vendor != "Todas"
+    params[:fd__prod] = product_codes if product_codes.present?
 
-    response = @conn.get(url)
+    url = "/Fact_Detalle/"
+    
+    Rails.logger.info("API Request: #{BASE_URL}#{url} Params: #{params}")
+    response = @conn.get(url, params)
+    
     if response.success?
       JSON.parse(response.body, symbolize_names: true)
     else
@@ -86,32 +79,151 @@ class ApiClient
   end
 
   # Obtiene TODAS las páginas disponibles para un rango de fechas.
-  # Itera página por página hasta que no hay más resultados o se alcanza el límite (max_pages).
-  def fetch_details_pages(max_pages: 50, start_date: nil, end_date: nil)
+  def fetch_details_pages(max_pages: 50, start_date: nil, end_date: nil, vendor: nil, product_codes: nil)
     all_results = []
     total_count = 0
     page = 1
 
     loop do
-      # Romper el bucle si excedemos el límite de seguridad de páginas
       break if page > max_pages
 
-      # Llamada a la API para la página actual
-      data = fetch_details(page: page, start_date: start_date, end_date: end_date)
+      data = fetch_details(page: page, start_date: start_date, end_date: end_date, vendor: vendor, product_codes: product_codes)
 
       if data.is_a?(Hash) && data[:results]
         total_count = data[:count] || 0
+        current_count = data[:results].count
         all_results.concat(data[:results]) # Acumular resultados
         
-        # Si no hay enlace a "siguiente" página ([:next]) o no hay resultados, terminamos.
+        Rails.logger.info("Page #{page}: Fetched #{current_count} items. Total so far: #{all_results.count}")
+
         break if data[:next].nil? || data[:results].empty?
         
         page += 1
       else
+        Rails.logger.warn("Fetch loop broken: Invalid data format or error at page #{page}")
         break
       end
     end
 
     { count: total_count, results: all_results }
+  end
+
+  # Obtiene los DETALLES reales (Ítems de factura) desde /Facturas/
+  # Según el usuario, 'Facturas' contiene el detalle (producto, precio) y 'Fact_Detalle' la cabecera.
+  def fetch_invoice_items(page: 1, start_date: nil, end_date: nil)
+    url = "/Facturas/?format=json&page=#{page}&page_size=1000"
+    # Asumimos que también soporta filtrado por fecha, si no, habría que traer todo (lo cual es peligroso)
+    # Si la API está bien diseñada, debería permitir filtrar detalles por fecha de emisión de la factura padre.
+    url += "&fecha_emision__gte=#{start_date}" if start_date
+    url += "&fecha_emision__lte=#{end_date}" if end_date
+
+    Rails.logger.info("API Request Items: #{BASE_URL}#{url}")
+    response = @conn.get(url)
+    
+    if response.success?
+      JSON.parse(response.body, symbolize_names: true)
+    elsif response.status == 401
+      raise UnauthorizedError, "Token expirado"
+    else
+      safe_body = response.body.to_s.dup.force_encoding("UTF-8").scrub("?")
+      Rails.logger.error("Error API (Items): #{response.status} - #{safe_body}")
+      { count: 0, results: [] }
+    end
+  rescue Faraday::Error => e
+    Rails.logger.error("Error de Conexión API (Items): #{e.message}")
+    { count: 0, results: [] }
+  rescue JSON::ParserError => e
+    Rails.logger.error("Error de Parseo JSON (Items): #{e.message}")
+    { count: 0, results: [] }
+  end
+
+  # Obtiene TODAS las páginas de ITEMS (Detalle)
+  def fetch_invoice_items_pages(max_pages: 50, start_date: nil, end_date: nil)
+    all_results = []
+    page = 1
+
+    loop do
+      break if page > max_pages
+
+      begin
+        data = fetch_invoice_items(page: page, start_date: start_date, end_date: end_date)
+
+        if data.is_a?(Hash) && data[:results]
+          current_count = data[:results].count
+          all_results.concat(data[:results])
+          Rails.logger.info("Items Page #{page}: Fetched #{current_count} items.")
+
+          break if data[:next].nil? || data[:results].empty?
+          page += 1
+        else
+          break
+        end
+      rescue UnauthorizedError
+        raise
+      end
+    end
+
+    all_results
+  end
+
+  # Obtener Tabla de Comisiones de Representantes
+  def fetch_commissions
+    fetch_all_resources("/Repr_Comision/")
+  end
+
+  # Obtener Tabla Maestro de Productos (para descripciones)
+  def fetch_products
+    fetch_all_resources("/SI_Producto/")
+  end
+
+  # Obtener Tabla de Comisiones por Producto
+  def fetch_product_commissions
+    fetch_all_resources("/Repr_Comision_Prod/")
+  end
+
+  private
+
+  # Método genérico para traer todos los recursos paginados
+  def fetch_all_resources(endpoint, max_pages: 50)
+    all_results = []
+    page = 1
+    
+    Rails.logger.info("Fetching Resource: #{endpoint}")
+    
+    loop do
+      break if page > max_pages
+      
+      begin
+        # Reducimos page_size a 200 para evitar timeout o exceso de memoria
+        response = @conn.get("#{endpoint}?format=json&page=#{page}&page_size=200")
+        
+        if response.success?
+          begin
+            data = JSON.parse(response.body, symbolize_names: true)
+            if data.is_a?(Hash) && data[:results]
+              all_results.concat(data[:results])
+              Rails.logger.info("#{endpoint} Page #{page}: Fetched #{data[:results].count} items.")
+              break if data[:next].nil? || data[:results].empty?
+              page += 1
+            else
+              Rails.logger.error("#{endpoint} Error: Unexpected format at page #{page}")
+              break
+            end
+          rescue JSON::ParserError => e
+            Rails.logger.error("#{endpoint} JSON Error: #{e.message}")
+            break
+          end
+        else
+          Rails.logger.error("#{endpoint} API Error: #{response.status} - #{response.body}")
+          break 
+        end
+      rescue Faraday::Error => e
+        Rails.logger.error("#{endpoint} Connection Error: #{e.message}")
+        break 
+      end
+    end
+    
+    Rails.logger.info("#{endpoint} Total fetched: #{all_results.count}")
+    all_results
   end
 end

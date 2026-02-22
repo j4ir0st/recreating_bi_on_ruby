@@ -176,6 +176,11 @@ class ApiClient
     fetch_all_resources("/SI_Producto/")
   end
 
+  # Obtener Tabla de Comisiones por Producto
+  def fetch_product_commissions
+    fetch_all_resources("/Repr_Comision_Prod/")
+  end
+
   # Obtiene la lista de usuarios.
   def fetch_users
     fetch_all_resources("/users/")

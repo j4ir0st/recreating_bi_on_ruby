@@ -98,13 +98,14 @@
 
         container.appendChild(toast);
 
-        // Eliminación automática
+        // Eliminación automática (Más tiempo para errores: 20s, otros: 5s)
+        const duration = type === 'error' ? 20000 : 5000;
         setTimeout(() => {
           if (toast.parentNode) {
             toast.style.animation = 'toastFadeOut 0.3s forwards';
             setTimeout(() => toast.remove(), 300);
           }
-        }, 5000);
+        }, duration);
       }
 
       // Método llamado al cambiar filtros
@@ -548,16 +549,23 @@
     .toast {
       pointer-events: auto; padding: 16px 24px; border-radius: 12px;
       backdrop-filter: blur(10px); color: white; min-width: 300px;
-      display: flex; align-items: center; gap: 15px;
+      max-width: 500px; /* Limitar ancho para que no ocupe toda la pantalla */
+      display: flex; align-items: flex-start; gap: 15px; /* Alinear al inicio para mensajes largos */
       box-shadow: 0 10px 40px rgba(0,0,0,0.5);
       animation: toastSlideIn 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
       font-family: 'Inter', sans-serif; font-size: 0.9rem; font-weight: 500;
+      max-height: 300px; overflow-y: auto; /* Permitir scroll si es demasiado largo */
+    }
+    .toast-content {
+      word-break: break-word; /* Asegurar que palabras largas se rompan */
+      line-height: 1.4;
+      flex: 1;
     }
     .toast-error { 
-      background: rgba(239, 68, 68, 0.9); border: 1px solid rgba(255,255,255,0.2);
-      box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
+      background: rgba(239, 68, 68, 0.95); border: 2px solid rgba(255,255,255,0.3);
+      box-shadow: 0 0 30px rgba(239, 68, 68, 0.5);
     }
-    .toast-icon { font-size: 1.2rem; }
+    .toast-icon { font-size: 1.2rem; margin-top: 2px; }
     
     @keyframes toastSlideIn {
       from { transform: translateX(120%); opacity: 0; }
@@ -579,10 +587,22 @@
   <!-- Toast Container -->
   <div id="toast-container" class="toast-container">
     <% if flash[:error_detail] %>
-      <div class="toast toast-error" onclick="this.style.animation='toastFadeOut 0.3s forwards'; setTimeout(()=>this.remove(), 300)">
+      <div class="toast toast-error" 
+           style="animation: toastSlideIn 0.3s forwards;"
+           onclick="this.style.animation='toastFadeOut 0.3s forwards'; setTimeout(()=>this.remove(), 300)">
         <span class="toast-icon">⚠️</span>
         <div class="toast-content"><%= flash[:error_detail] %></div>
       </div>
+      <script>
+        // Asegurar que el flash de error dure lo mismo que los toasts dinámicos
+        setTimeout(() => {
+          const flashToast = document.querySelector('.toast-error');
+          if (flashToast) {
+            flashToast.style.animation = 'toastFadeOut 0.3s forwards';
+            setTimeout(() => flashToast.remove(), 300);
+          }
+        }, 20000);
+      </script>
     <% end %>
   </div>
 

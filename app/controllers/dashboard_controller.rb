@@ -29,17 +29,23 @@ class DashboardController < ApplicationController
   def handle_unexpected_error(exception)
     Rails.logger.error("DASHBOARD ERROR: #{exception.message}\n#{exception.backtrace.first(10).join("\n")}")
     
-    error_msg = "Error inesperado: #{exception.message.truncate(100)}"
+    error_msg = "Error inesperado: #{exception.message}"
     
     if request.xhr?
       render inline: "<div class='error-toast-ajax'>#{error_msg}</div>", status: :internal_server_error
     else
-      redirect_to root_path, flash: { error_detail: error_msg }
+      # Prevenir bucle: si ya estamos en una ruta que falló, no redirigir a la misma
+      if request.path == root_path
+        render plain: "Error Crítico del Sistema: #{exception.message}. Por favor contacte al administrador.", status: :internal_server_error
+      else
+        redirect_to root_path, flash: { error_detail: error_msg }
+      end
     end
   end
 
   def load_data
-    client = ApiClient.new(session[:api_token])
+    begin
+      client = ApiClient.new(session[:api_token])
 
     @selected_year = params[:year] || Date.today.year.to_s
     @selected_cancelado = params[:cancelado] || "Todo"
@@ -171,6 +177,18 @@ class DashboardController < ApplicationController
     
     @years = ["2025", "2026"]
     @dates = (1..12).map { |m| "#{@selected_year}-#{m.to_s.rjust(2, '0')}" }
+    
+    rescue Faraday::Error, UnauthorizedError => e
+      session[:api_token] = nil
+      redirect_to login_path, alert: "Tu sesión ha expirado o hubo un error de conexión."
+    rescue => e
+      Rails.logger.error("DASHBOARD DATA ERROR: #{e.message}\n#{e.backtrace.first(5).join("\n")}")
+      @details = []
+      @commissions = []
+      @products = []
+      @product_commissions = []
+      flash.now[:error] = "Error al cargar datos de la API: #{e.message}"
+    end
   end
 
   def flatten_nested_data(invoices, mode = :vendor)

@@ -39,7 +39,7 @@
                   <span class="status-badge status-pending" title="Pendiente">N</span>
                 <% end %>
               </td>
-              <td data-product-code="<%= item[:producto_codigo] %>" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+              <td data-product-code="<%= item[:producto_codigo] %>" style="min-width: 200px;">
                 <span class="product-name" title="<%= item[:producto_codigo] %>">
                   <%= item[:producto_codigo] %>
                 </span>
@@ -87,7 +87,7 @@
       <table class="data-table">
         <thead>
           <tr>
-            <th>Vendedor</th>
+            <th style="min-width: 140px;">Vendedor</th>
             <th class="text-right">Monto Total (S/)</th>
             <th class="text-right">Cobrado (S/)</th>
             <th class="text-right">Saldo (S/)</th>

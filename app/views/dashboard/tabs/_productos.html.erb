@@ -16,7 +16,7 @@
         <tr>
           <th style="width: 120px;">Factura</th>
           <th style="width: 85px;">Fecha</th>
-          <th style="width: 85px;">Vendedor</th>
+          <th style="width: 160px;">Vendedor</th>
           <th class="text-center" style="width: 55px;">Can.</th>
           <th>Producto</th>
           <th class="text-right" style="width: 135px;">Precio (S/)</th>
@@ -29,7 +29,7 @@
           <tr>
             <td><%= item[:numero_factura] %></td>
             <td><%= item[:fecha_emision] %></td>
-            <td><%= item[:vendedor].to_s.truncate(20) %></td>
+            <td><%= item[:vendedor] %></td>
             <td class="text-center">
               <% if item[:cancelado] == "S" %>
                 <span class="status-badge status-paid" title="Cancelado">S</span>
@@ -37,7 +37,7 @@
                 <span class="status-badge status-pending" title="Pendiente">N</span>
               <% end %>
             </td>
-            <td data-product-code="<%= item[:producto_codigo] %>" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+            <td data-product-code="<%= item[:producto_codigo] %>" style="min-width: 250px;">
               <span class="product-name" title="<%= item[:producto_codigo] %>">
                 <%= item[:producto_codigo] %>
               </span>

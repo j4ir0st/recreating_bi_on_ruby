@@ -29,7 +29,17 @@
       connect() {
         // Recuperar la pestaña activa actual
         this.currentTab = document.querySelector('.tab-btn.active')?.dataset.tab || "vendedor";
+        this.basePath = this.getBasePath();
         this.loadProductDescriptions();
+      }
+
+      getBasePath() {
+        // Obtener el subpath actual (ej: /app_comisiones/)
+        const path = window.location.pathname;
+        if (path.includes('/app_comisiones')) {
+          return '/app_comisiones/';
+        }
+        return '/';
       }
 
       switchTab(e) {
@@ -38,7 +48,7 @@
         
         this.currentTab = tab;
         
-        // UI Feedback
+        // Retroalimentación de la Interfaz de Usuario (UI)
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
         e.currentTarget.classList.add('active');
 
@@ -48,7 +58,8 @@
         const params = new URLSearchParams(new FormData(form));
         params.set('tab', tab);
 
-        fetch(`/${tab}?${params.toString()}`, {
+        // Usar ruta absoluta dinámica para respetar el subpath (/app_comisiones/)
+        fetch(`${this.basePath}${tab}?${params.toString()}`, {
           headers: { "X-Requested-With": "XMLHttpRequest" }
         })
           .then(r => {
@@ -87,7 +98,7 @@
 
         container.appendChild(toast);
 
-        // Auto remove
+        // Eliminación automática
         setTimeout(() => {
           if (toast.parentNode) {
             toast.style.animation = 'toastFadeOut 0.3s forwards';
@@ -104,31 +115,55 @@
         const year = this.hasYearSelectTarget ? this.yearSelectTarget.value : "";
         const cancelado = this.hasCanceladoSelectTarget ? this.canceladoSelectTarget.value : "Todo";
         
-        // Recargar página con nuevos parámetros (GET)
-        window.location.href = `/?tab=${this.currentTab}&vendor=${encodeURIComponent(vendor)}&date_range=${encodeURIComponent(dateRange)}&year=${encodeURIComponent(year)}&cancelado=${encodeURIComponent(cancelado)}`;
+        // Recargar página con nuevos parámetros (GET) preservando la ruta actual (subpath)
+        const params = `tab=${this.currentTab}&vendor=${encodeURIComponent(vendor)}&date_range=${encodeURIComponent(dateRange)}&year=${encodeURIComponent(year)}&cancelado=${encodeURIComponent(cancelado)}`;
+        window.location.href = `${window.location.pathname}?${params}`;
       }
 
-      // Carga asíncrona de descripciones de productos
+      // Carga asíncrona y progresiva de descripciones de productos
       loadProductDescriptions() {
-        const slots = document.querySelectorAll('[data-product-code]');
+        const slots = Array.from(document.querySelectorAll('[data-product-code]'));
         if (slots.length === 0) return;
 
-        fetch('/products')
+        // Obtener códigos únicos que aún no han sido procesados
+        const codesToFetch = [...new Set(
+          slots
+            .filter(slot => !slot.dataset.processed)
+            .map(slot => slot.dataset.productCode)
+        )];
+
+        if (codesToFetch.length === 0) return;
+
+        // Procesar en lotes de 15 para un efecto progresivo "ítem por ítem"
+        const batchSize = 15;
+        for (let i = 0; i < codesToFetch.length; i += batchSize) {
+          const batch = codesToFetch.slice(i, i + batchSize);
+          this.fetchBatch(batch, slots);
+        }
+      }
+
+      fetchBatch(batch, allSlots) {
+        const codesParam = batch.join(',');
+        fetch(`${this.basePath}products?codes=${encodeURIComponent(codesParam)}`)
           .then(r => r.json())
-          .then(products => {
-            slots.forEach(slot => {
+          .then(productsMap => {
+            // Actualizar solo los slots que corresponden a este lote
+            allSlots.forEach(slot => {
               const code = slot.dataset.productCode;
-              if (products[code]) {
-                const span = slot.querySelector('.product-name');
-                if (span) span.innerText = products[code];
-                slot.title = `${code} - ${products[code]}`;
+              if (productsMap[code]) {
+                const nameSpan = slot.querySelector('.product-name');
+                if (nameSpan) {
+                  nameSpan.textContent = productsMap[code];
+                  slot.title = productsMap[code]; // Tooltip con nombre completo
+                  slot.dataset.processed = "true";
+                }
               }
             });
           })
-          .catch(err => console.error("Error cargando productos:", err));
+          .catch(err => console.error("Error cargando lote de productos:", err));
       }
 
-      // Exportar tabla a Excel
+      // Exportar tabla a Excel con formato numérico correcto
       exportToExcel() {
         const table = document.querySelector('.data-table');
         if (!table) {
@@ -136,7 +171,23 @@
           return;
         }
 
-        const wb = XLSX.utils.table_to_book(table, { sheet: "Comisiones" });
+        // Crear una copia de la tabla para manipular los datos sin afectar la vista
+        const tableCopy = table.cloneNode(true);
+        
+        // Limpiar símbolos de moneda y formatos para que Excel los reconozca como números
+        tableCopy.querySelectorAll('td').forEach(td => {
+          let text = td.innerText.trim();
+          // Si el texto parece un monto (empieza con S/), lo limpiamos
+          if (text.startsWith('S/')) {
+            // Eliminar 'S/', espacios y comas de miles. Mantener el punto decimal.
+            let numericValue = text.replace(/S\/\s?/, '').replace(/,/g, '');
+            td.innerText = numericValue;
+            // Añadir metadato para SheetJS si es necesario (t: 'n' para número)
+            td.setAttribute('data-t', 'n');
+          }
+        });
+
+        const wb = XLSX.utils.table_to_book(tableCopy, { sheet: "Comisiones", raw: false });
         const fileName = `Comisiones_${this.currentTab}_${new Date().toISOString().slice(0,10)}.xlsx`;
         XLSX.writeFile(wb, fileName);
       }
@@ -489,7 +540,7 @@
       .header-left h1 { font-size:1.5rem; }
     }
 
-    /* Toast Notification Styles */
+    /* Estilos de Notificaciones Toast */
     .toast-container {
       position: fixed; top: 20px; right: 20px; z-index: 9999;
       display: flex; flex-direction: column; gap: 10px; pointer-events: none;
@@ -541,17 +592,17 @@
       document.getElementById("global-loader").classList.add("active");
     });
     
-    // Escuchar cuando Turbo termina de cargar para ocultar el loader
+    // Escuchar cuando Turbo termina de cargar para ocultar el cargador
     document.addEventListener("turbo:load", () => {
       document.getElementById("global-loader").classList.remove("active");
     });
 
-    // Función global para mostrar el loader manualmente
+    // Función global para mostrar el cargador manualmente
     window.showLoader = function() {
       document.getElementById("global-loader").classList.add("active");
     };
     
-    // Función global para ocultar el loader manualmente
+    // Función global para ocultar el cargador manualmente
     window.hideLoader = function() {
       document.getElementById("global-loader").classList.remove("active");
     };

@@ -14,29 +14,37 @@ require "action_view/railtie"
 # require "action_cable/engine"
 # require "rails/test_unit/railtie"
 
-# Require the gems listed in Gemfile, including any gems
-# you've limited to :test, :development, or :production.
+# Requiere las gemas listadas en el Gemfile, incluyendo aquellas
+# limitadas a :test, :development o :production.
 Bundler.require(*Rails.groups)
 
 module ComisionesDashboard
   class Application < Rails::Application
-    # Initialize configuration defaults for originally generated Rails version.
+    # Inicializar configuraciones predeterminadas para la versión de Rails generada originalmente.
     config.load_defaults 7.2
 
-    # Please, add to the `ignore` list any other `lib` subdirectories that do
-    # not contain `.rb` files, or that should not be reloaded or eager loaded.
-    # Common ones are `templates`, `generators`, or `middleware`, for example.
+    # Por favor, añada a la lista `ignore` cualquier otro subdirectorio de `lib` que
+    # no contenga archivos `.rb`, o que no deba sers cargado o precargado.
+    # Ejemplos comunes son `templates`, `generators` o `middleware`.
     config.autoload_lib(ignore: %w[assets tasks])
 
-    # Configuration for the application, engines, and railties goes here.
+    # La configuración para la aplicación, motores y railties va aquí.
     #
-    # These settings can be overridden in specific environments using the files
-    # in config/environments, which are processed later.
+    # Estos ajustes pueden ser sobrescritos en entornos específicos usando los archivos
+    # en config/environments, que se procesan después.
     #
     # config.time_zone = "Central Time (US & Canada)"
     # config.eager_load_paths << Rails.root.join("extras")
 
-    # Don't generate system test files.
+    # No generar archivos de prueba del sistema.
     config.generators.system_tests = nil
+
+    # Middleware para asegurar que Rails conozca el subdirectorio (IIS Proxy Fix)
+    config.middleware.insert_before 0, Rack::Config do |env|
+      env['SCRIPT_NAME'] = '/app_comisiones' if env['SCRIPT_NAME'].to_s.empty?
+    end
+
+    # Configuración para subdirectorio
+    config.relative_url_root = "/app_comisiones"
   end
 end

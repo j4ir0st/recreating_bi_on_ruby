@@ -1,66 +1,58 @@
 # syntax = docker/dockerfile:1
 
 
-# Make sure RUBY_VERSION matches the Ruby version in .ruby-version
+# Asegurarse de que RUBY_VERSION coincida con la versión de Ruby en .ruby-version
 ARG RUBY_VERSION=3.2.2
 FROM docker.io/library/ruby:$RUBY_VERSION-slim AS base
 
-# Rails app lives here
+# La aplicación Rails reside aquí
 WORKDIR /rails
 
-# Install base packages
+# Instalar paquetes base
 RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y curl libjemalloc2 && \
+    apt-get install --no-install-recommends -y curl libjemalloc2 dos2unix && \
     rm -rf /var/lib/apt/lists /var/cache/apt/archives
 
-# Set production environment
+# Configurar el entorno de producción
 ENV RAILS_ENV="production" \
     BUNDLE_DEPLOYMENT="1" \
     BUNDLE_PATH="/usr/local/bundle" \
     BUNDLE_WITHOUT="development"
 
-# Throw-away build stage to reduce size of final image
+# Etapa de construcción temporal para reducir el tamaño de la imagen final
 FROM base AS build
 
-# Install packages needed to build gems
+# Instalar paquetes necesarios para construir gemas
 RUN apt-get update -qq && \
     apt-get install --no-install-recommends -y build-essential git libyaml-dev pkg-config && \
     rm -rf /var/lib/apt/lists /var/cache/apt/archives
 
-# Install application gems
+# Instalar gemas de la aplicación
 COPY Gemfile Gemfile.lock ./
 RUN bundle install && \
     rm -rf ~/.bundle/ "${BUNDLE_PATH}"/ruby/*/cache "${BUNDLE_PATH}"/ruby/*/bundler/gems/*/.git && \
     bundle exec bootsnap precompile --gemfile
 
-# Copy application code
+# Copiar el código de la aplicación
 COPY . .
 
-# Precompile bootsnap code for faster boot times
+# Precompilar el código de bootsnap para tiempos de arranque más rápidos
 RUN bundle exec bootsnap precompile app/ lib/
 
-# Precompiling assets for production without requiring secret RAILS_MASTER_KEY
-RUN SECRET_KEY_BASE_DUMMY=1 ./bin/rails assets:precompile
+# Precompilación de activos para producción sin requerir la clave secreta RAILS_MASTER_KEY
+RUN dos2unix bin/* && SECRET_KEY_BASE_DUMMY=1 ./bin/rails assets:precompile
 
-
-
-
-# Final stage for app image
+# Etapa final para la imagen de la aplicación
 FROM base
 
-# Copy built artifacts: gems, application
+# Copiar artefactos construidos: gemas, aplicación
 COPY --from=build "${BUNDLE_PATH}" "${BUNDLE_PATH}"
 COPY --from=build /rails /rails
 
-# Run and own only the runtime files as a non-root user for security
+# Ejecutar y ser propietario solo de los archivos de tiempo de ejecución como usuario no root por seguridad
 RUN groupadd --system --gid 1000 rails && \
     useradd rails --uid 1000 --gid 1000 --create-home --shell /bin/bash && \
     chown -R rails:rails log tmp
-USER 1000:1000
-
-# Entrypoint prepares the database.
-ENTRYPOINT ["/rails/bin/docker-entrypoint"]
-
-# Start the server by default, this can be overwritten at runtime
+# Iniciar el servidor por defecto, esto puede ser sobrescrito en tiempo de ejecución
 EXPOSE 3000
-CMD ["./bin/rails", "server"]
+CMD ["bin/rails", "server"]

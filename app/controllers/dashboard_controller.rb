@@ -72,7 +72,7 @@ class DashboardController < ApplicationController
     start_date_str = start_date.strftime("%Y-%m-%d")
     end_date_str = end_date.strftime("%Y-%m-%d 23:59:59")
 
-    # 1. Obtener Datos Maestros (Cache)
+    # 1. Obtener Datos Maestros (Caché)
     @products = Rails.cache.fetch("si_productos", expires_in: 4.hours) do
       client.fetch_products
     end
@@ -96,10 +96,32 @@ class DashboardController < ApplicationController
     )
     raw_details = api_data[:results] || []
 
-    # Normalizar claves de cabeceras
+    # Normalizar llaves de cabeceras
     @details = raw_details.map { |d| d.transform_keys(&:to_s) }
     
-    # IMPORTANTE: Filtro manual de fechas en memoria (Backup)
+    # Intentar resolver nombres de vendedores truncados usando la tabla de comisiones
+    if @commissions.present?
+      @details.each do |d|
+        v_raw = d["vendedor"].to_s.strip
+        # Si el nombre parece truncado (tiene puntos suspensivos o es muy corto)
+        if v_raw.include?('...') || v_raw.length >= 15
+          v_clean = v_raw.gsub('...', '').strip.upcase
+          # Buscar un nombre en comisiones que comience con el nombre truncado
+          full_name_info = @commissions.find do |c| 
+            # Normalizar para comparación
+            c_name = c[:nombre].to_s.strip.upcase
+            # Comparación por prefijo
+            c_name.start_with?(v_clean) || v_clean.start_with?(c_name)
+          end
+          
+          if full_name_info
+            d["vendedor"] = full_name_info[:nombre].to_s.strip
+          end
+        end
+      end
+    end
+    
+    # IMPORTANTE: Filtro manual de fechas en memoria (Respaldo)
     if @selected_month.present? && @selected_month != "Todas"
       @details = @details.select do |d|
         begin
@@ -116,7 +138,7 @@ class DashboardController < ApplicationController
       @details = @details.select { |d| d["cancelado"] == @selected_cancelado }
     end
     
-    # Mapa de Cabeceras por Numero de Factura para le cruce
+    # Mapa de Facturas por Número para el cruce
     @invoices_map = @details.index_by { |d| d["nro_fact"] } 
 
     # Aplicar Filtro de Vendedor (pero mantenemos PAGADAS y PENDIENTES para los KPIs)
@@ -225,7 +247,7 @@ class DashboardController < ApplicationController
   end
 
   def calculate_kpis(details, total_api_count)
-    # Sumarizar montos convertidos a float (con .to_f)
+    # Sumarizar montos convertidos a coma flotante (con .to_f)
     total_monto = details.sum { |d| d["monto_soles"].to_f }
     total_cobrado = details.sum { |d| d["cobrado"].to_f }
     total_saldo = details.sum { |d| d["saldo"].to_f }
@@ -280,7 +302,7 @@ class DashboardController < ApplicationController
     end
   end
 
-  # filter_by_date eliminado ya que ahora filtramos en el servidor
+  # extract_date_by_granularity: Extrae la parte relevante de la fecha (YYYY-MM-DD o YYYY-MM)
 
   def products_json
     client = ApiClient.new(session[:api_token])
@@ -288,13 +310,19 @@ class DashboardController < ApplicationController
       client.fetch_products
     end
     
+    # Soporte opcional para filtrar por lista de códigos (batching)
+    requested_codes = params[:codes].to_s.split(',').map(&:strip)
+    
     # Mapear a hash codigo => descripcion (Usando campos exactos: codigo y descripcion)
     products_map = products.each_with_object({}) do |p, hash|
-      code = p[:codigo]
+      code = p[:codigo].to_s.strip
       next unless code
       
-      desc = p[:descripcion] || code.to_s
-      hash[code.to_s.strip] = desc.to_s.strip
+      # Si se solicitaron códigos específicos, saltar los que no estén en la lista
+      next if requested_codes.any? && !requested_codes.include?(code)
+      
+      desc = p[:descripcion] || code
+      hash[code] = desc.to_s.strip
     end
     
     render json: products_map

@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-# Eliminar PID residual
+# Remove stale PID
 rm -f /rails/tmp/pids/server.pid
 
-echo "=== Iniciando servidor ==="
+echo "=== Starting server ==="
 exec "$@"

@@ -49,7 +49,9 @@
         <div style="display: flex; flex-direction: row; align-items: center; gap: 12px;">
           
           <div style="text-align: right;">
-            <div class="welcome-msg" style="color: var(--accent-cyan); font-weight: 600; font-size: 0.9rem;">Bienvenido, <%= session[:username] || "Usuario" %></div>
+            <div class="welcome-msg" style="color: var(--accent-cyan); font-weight: 600; font-size: 0.9rem;">
+              Bienvenido, <%= session[:first_name].present? ? "#{session[:first_name]} #{session[:last_name]}" : (session[:username] || "Usuario") %>
+            </div>
             <%= button_to "Cerrar Sesión", logout_path, method: :delete, class: "btn-logout", style: "background: transparent; border: 1px solid var(--accent-orange); color: var(--accent-orange); padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; cursor: pointer;" %>
           </div>
         </div>

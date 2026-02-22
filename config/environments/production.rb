@@ -38,10 +38,19 @@ Rails.application.configure do
 
   # Assume all access to the app is happening through a SSL-terminating reverse proxy.
   # Can be used together with config.force_ssl for Strict-Transport-Security and secure cookies.
-  # config.assume_ssl = true
+  # Assume all access to the app is over SSL and use secure cookies.
+  config.assume_ssl = true
+
+  # Allow access from the production domain and local proxy
+  config.hosts << "appsurgicorperu.com"
+  config.hosts << "localhost"
+  config.hosts << "127.0.0.1"
+
+  # Disable CSRF origin check to allow proxied submissions from IIS
+  config.action_controller.forgery_protection_origin_check = false
 
   # Force all access to the app over SSL, use Strict-Transport-Security, and use secure cookies.
-  config.force_ssl = true
+  config.force_ssl = false
 
   # Skip http-to-https redirect for the default health check endpoint.
   # config.ssl_options = { redirect: { exclude: ->(request) { request.path == "/up" } } }

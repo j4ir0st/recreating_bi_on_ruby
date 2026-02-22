@@ -94,13 +94,13 @@ class ApiClient
         current_count = data[:results].count
         all_results.concat(data[:results]) # Acumular resultados
         
-        Rails.logger.info("Page #{page}: Fetched #{current_count} items. Total so far: #{all_results.count}")
+        Rails.logger.info("Página #{page}: Obtenidos #{current_count} elementos. Total hasta ahora: #{all_results.count}")
 
         break if data[:next].nil? || data[:results].empty?
         
         page += 1
       else
-        Rails.logger.warn("Fetch loop broken: Invalid data format or error at page #{page}")
+        Rails.logger.warn("Bucle de obtención interrumpido: Formato de datos no válido o error en la página #{page}")
         break
       end
     end
@@ -151,7 +151,7 @@ class ApiClient
         if data.is_a?(Hash) && data[:results]
           current_count = data[:results].count
           all_results.concat(data[:results])
-          Rails.logger.info("Items Page #{page}: Fetched #{current_count} items.")
+          Rails.logger.info("Página de Ítems #{page}: Obtenidos #{current_count} elementos.")
 
           break if data[:next].nil? || data[:results].empty?
           page += 1
@@ -176,25 +176,25 @@ class ApiClient
     fetch_all_resources("/SI_Producto/")
   end
 
-  # Obtener Tabla de Comisiones por Producto
-  def fetch_product_commissions
-    fetch_all_resources("/Repr_Comision_Prod/")
+  # Obtiene la lista de usuarios.
+  def fetch_users
+    fetch_all_resources("/users/")
   end
 
   private
 
-  # Método genérico para traer todos los recursos paginados
+  # Método genérico para traer todos los recursos paginados con reintentos básicos.
   def fetch_all_resources(endpoint, max_pages: 50)
     all_results = []
     page = 1
     
-    Rails.logger.info("Fetching Resource: #{endpoint}")
+    Rails.logger.info("Obteniendo Recurso: #{endpoint}")
     
     loop do
       break if page > max_pages
       
       begin
-        # Reducimos page_size a 200 para evitar timeout o exceso de memoria
+        # Reducimos page_size a 200 para evitar tiempo de espera agotado o exceso de memoria.
         response = @conn.get("#{endpoint}?format=json&page=#{page}&page_size=200")
         
         if response.success?
@@ -202,28 +202,28 @@ class ApiClient
             data = JSON.parse(response.body, symbolize_names: true)
             if data.is_a?(Hash) && data[:results]
               all_results.concat(data[:results])
-              Rails.logger.info("#{endpoint} Page #{page}: Fetched #{data[:results].count} items.")
+              Rails.logger.info("#{endpoint} Página #{page}: Obtenidos #{data[:results].count} elementos.")
               break if data[:next].nil? || data[:results].empty?
               page += 1
             else
-              Rails.logger.error("#{endpoint} Error: Unexpected format at page #{page}")
+              Rails.logger.error("#{endpoint} Error: Formato inesperado en página #{page}")
               break
             end
           rescue JSON::ParserError => e
-            Rails.logger.error("#{endpoint} JSON Error: #{e.message}")
+            Rails.logger.error("#{endpoint} Error de JSON: #{e.message}")
             break
           end
         else
-          Rails.logger.error("#{endpoint} API Error: #{response.status} - #{response.body}")
+          Rails.logger.error("#{endpoint} Error de API: #{response.status} - #{response.body}")
           break 
         end
       rescue Faraday::Error => e
-        Rails.logger.error("#{endpoint} Connection Error: #{e.message}")
+        Rails.logger.error("#{endpoint} Error de Conexión: #{e.message}")
         break 
       end
     end
     
-    Rails.logger.info("#{endpoint} Total fetched: #{all_results.count}")
+    Rails.logger.info("#{endpoint} Total obtenidos: #{all_results.count}")
     all_results
   end
 end

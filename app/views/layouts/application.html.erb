@@ -31,6 +31,90 @@
         this.currentTab = document.querySelector('.tab-btn.active')?.dataset.tab || "vendedor";
         this.basePath = this.getBasePath();
         this.loadProductDescriptions();
+
+        // Cerrar dropdowns al hacer click fuera y ACTUALIZAR si hubo cambios
+        document.addEventListener("click", (e) => {
+          if (!e.target.closest('.multiselect-container')) {
+            const openDropdowns = document.querySelectorAll('.multiselect-dropdown.show');
+            if (openDropdowns.length > 0) {
+              openDropdowns.forEach(d => d.classList.remove('show'));
+              // El usuario terminó la selección al hacer click fuera
+              this.filterChanged();
+            }
+          }
+        });
+
+        // Soporte para tecla Enter para aplicar filtros rápidamente
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            const openDropdowns = document.querySelectorAll('.multiselect-dropdown.show');
+            if (openDropdowns.length > 0) {
+              e.preventDefault();
+              openDropdowns.forEach(d => d.classList.remove('show'));
+              this.filterChanged();
+            }
+          }
+        });
+      }
+
+      toggleDropdown(e) {
+        e.stopPropagation();
+        const container = e.currentTarget.closest('.multiselect-container');
+        const dropdown = container.querySelector('.multiselect-dropdown');
+        
+        // Si vamos a cerrar el dropdown actual al hacerle click de nuevo
+        const isCurrentlyOpen = dropdown.classList.contains('show');
+        
+        // Cerrar otros dropdowns abiertos
+        document.querySelectorAll('.multiselect-dropdown.show').forEach(d => {
+          if (d !== dropdown) d.classList.remove('show');
+        });
+        
+        dropdown.classList.toggle('show');
+        
+        // Si se cerró explícitamente, disparamos la actualización
+        if (isCurrentlyOpen) {
+          this.filterChanged();
+        }
+      }
+
+
+      updateCommission(e) {
+        const checkbox = e.target;
+        const url = checkbox.dataset.url;
+        const paid = checkbox.checked;
+        
+        console.log(`Actualizando comisión URL ${url} a pagada=${paid}`);
+        
+        checkbox.style.opacity = '0.5';
+        
+        fetch(`${this.basePath}update_commission`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content
+          },
+          body: JSON.stringify({ url: url, paid: paid })
+        })
+        .then(r => r.json().then(data => ({ status: r.status, ok: r.ok, data })))
+        .then(({ ok, data }) => {
+          if (ok && data.success) {
+            this.showToast("Estado de comisión actualizado", "success");
+          } else {
+            // Mostrar el mensaje EXACTO que devolvió la API
+            const msg = data.error || "Error desconocido en el servidor";
+            this.showToast(`Error de la API: ${msg}`, "error");
+            checkbox.checked = !paid; // Revertir
+          }
+        })
+        .catch(err => {
+          console.error("Error AJAX:", err);
+          this.showToast("No se pudo conectar con el servidor", "error");
+          checkbox.checked = !paid; // Revertir
+        })
+        .finally(() => {
+          checkbox.style.opacity = '1';
+        });
       }
 
       getBasePath() {
@@ -109,16 +193,49 @@
       }
 
       // Método llamado al cambiar filtros
+      toggleCommissionEdit() {
+        const columns = this.element.querySelectorAll('[data-dashboard-target="commissionColumn"]');
+        const iconBtn = this.element.querySelector('[data-dashboard-target="editIcon"]');
+        
+        if (columns.length === 0) return;
+        
+        const isVisible = columns[0].style.display !== 'none';
+        const newDisplay = isVisible ? 'none' : 'table-cell';
+        
+        columns.forEach(col => col.style.display = newDisplay);
+        
+        // Actualizar Icono
+        if (iconBtn) {
+          if (!isVisible) {
+            // Cambiar a Icono Check (Guardado/Listo)
+            iconBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+            iconBtn.title = "Ocultar edición";
+            this.showToast("Modo edición activado", "info");
+          } else {
+            // Cambiar a Icono Editar (Lápiz)
+            iconBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-edit"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
+            iconBtn.title = "Editar comisiones";
+          }
+        }
+      }
+
       filterChanged() {
         if (window.showLoader) window.showLoader();
-        const vendor = this.hasVendorSelectTarget ? this.vendorSelectTarget.value : "";
-        const dateRange = this.hasDateSelectTarget ? this.dateSelectTarget.value : "";
-        const year = this.hasYearSelectTarget ? this.yearSelectTarget.value : "";
-        const cancelado = this.hasCanceladoSelectTarget ? this.canceladoSelectTarget.value : "Todo";
         
-        // Recargar página con nuevos parámetros (GET) preservando la ruta actual (subpath)
-        const params = `tab=${this.currentTab}&vendor=${encodeURIComponent(vendor)}&date_range=${encodeURIComponent(dateRange)}&year=${encodeURIComponent(year)}&cancelado=${encodeURIComponent(cancelado)}`;
-        window.location.href = `${window.location.pathname}?${params}`;
+        const form = document.getElementById('filter-form');
+        const formData = new FormData(form);
+        const params = new URLSearchParams();
+        
+        params.set("tab", this.currentTab);
+        
+        // Procesar FormData para manejar múltiples valores y parámetros simples
+        for (const [key, value] of formData.entries()) {
+          // Si el valor es 'Todas', podemos optar por no enviarlo para limpiar la URL, 
+          // pero lo mantendremos para coherencia si el usuario lo marcó.
+          params.append(key, value);
+        }
+
+        window.location.href = `${window.location.pathname}?${params.toString()}`;
       }
 
       // Carga asíncrona y progresiva de descripciones de productos
@@ -144,24 +261,58 @@
       }
 
       fetchBatch(batch, allSlots) {
+        // Mostrar indicador de carga "..." animado en los slots
+        batch.forEach(code => {
+          const matchingSlots = allSlots.filter(s => s.dataset.productCode === code);
+          matchingSlots.forEach(slot => {
+            const nameSpan = slot.querySelector('.product-name');
+            if (nameSpan && !slot.dataset.processed) {
+              nameSpan.innerHTML = `${code} <span class="loading-dots">...</span>`;
+            }
+          });
+        });
+
         const codesParam = batch.join(',');
+        console.log(`Buscando descripciones para: ${codesParam}`);
+        
         fetch(`${this.basePath}products?codes=${encodeURIComponent(codesParam)}`)
           .then(r => r.json())
           .then(productsMap => {
-            // Actualizar solo los slots que corresponden a este lote
+            console.log("Respuesta de productos:", productsMap);
             allSlots.forEach(slot => {
               const code = slot.dataset.productCode;
               if (productsMap[code]) {
                 const nameSpan = slot.querySelector('.product-name');
                 if (nameSpan) {
-                  nameSpan.textContent = productsMap[code];
-                  slot.title = productsMap[code]; // Tooltip con nombre completo
+                  nameSpan.style.opacity = '0';
+                  setTimeout(() => {
+                    nameSpan.textContent = productsMap[code];
+                    nameSpan.style.opacity = '1';
+                    nameSpan.style.transition = 'opacity 0.5s ease';
+                  }, 200);
+                  slot.title = productsMap[code];
                   slot.dataset.processed = "true";
+                }
+              } else {
+                // Si no se encontró, quitar los puntitos para no confundir
+                const nameSpan = slot.querySelector('.product-name');
+                if (nameSpan && !slot.dataset.processed) {
+                  nameSpan.textContent = code;
                 }
               }
             });
           })
-          .catch(err => console.error("Error cargando lote de productos:", err));
+          .catch(err => {
+            console.error("Error cargando lote de productos:", err);
+            // Revertir a solo código en caso de error
+            batch.forEach(code => {
+              const matchingSlots = allSlots.filter(s => s.dataset.productCode === code);
+              matchingSlots.forEach(slot => {
+                const nameSpan = slot.querySelector('.product-name');
+                if (nameSpan && !slot.dataset.processed) nameSpan.textContent = code;
+              });
+            });
+          });
       }
 
       // Exportar tabla a Excel con formato numérico correcto
@@ -527,6 +678,18 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 
+    .loading-dots {
+      color: var(--accent-orange);
+      font-weight: bold;
+      animation: pulse 0.8s infinite;
+      margin-left: 6px;
+      display: inline-block;
+    }
+
+    .product-name {
+      transition: opacity 0.3s ease;
+    }
+
     @keyframes fadeInUp {
       from { opacity:0; transform:translateY(16px); }
       to { opacity:1; transform:translateY(0); }
@@ -574,6 +737,40 @@
     @keyframes toastFadeOut {
       from { transform: translateX(0); opacity: 1; }
       to { transform: translateX(120%); opacity: 0; }
+    }
+    /* Custom Multiselect Dropdown */
+    .multiselect-container {
+      position: relative; width: 100%;
+    }
+    .multiselect-trigger {
+      padding: 8px 12px; background: var(--bg-card);
+      border: 1px solid var(--border-color); border-radius: 6px;
+      cursor: pointer; display: flex; justify-content: space-between;
+      align-items: center; min-height: 38px; font-size: 0.85rem;
+    }
+    .multiselect-dropdown {
+      position: absolute; top: 100%; left: 0; right: 0;
+      background: var(--bg-card); border: 1px solid var(--border-color);
+      border-radius: 6px; margin-top: 4px; max-height: 250px;
+      overflow-y: auto; z-index: 1000; display: none;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.3); padding: 8px 0;
+    }
+    .multiselect-dropdown.show { display: block; }
+    .multiselect-option {
+      padding: 8px 12px; display: flex; align-items: center; gap: 10px;
+      transition: background 0.2s; cursor: pointer;
+    }
+    .multiselect-option:hover { background: rgba(255,255,255,0.05); }
+    .multiselect-option input[type="checkbox"] {
+      width: 16px; height: 16px; accent-color: var(--accent-orange);
+    }
+    .multiselect-option label {
+      cursor: pointer; flex-grow: 1; margin: 0;
+      font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+
+    .commission-checkbox {
+      width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-orange);
     }
   </style>
 </head>

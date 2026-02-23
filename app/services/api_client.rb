@@ -181,6 +181,74 @@ class ApiClient
     fetch_all_resources("/Repr_Comision_Prod/")
   end
 
+  # Obtener un producto específico por su código (Búsqueda rápida optimizada)
+  def fetch_product_by_code(code)
+    url = "/SI_Producto/"
+    # El usuario solicita específicamente fields=codigo,descripcion y codigo=VALOR
+    params = { fields: "codigo,descripcion", codigo: code }
+    
+    full_url = "#{BASE_URL}#{url}?#{Faraday::Utils.build_query(params)}"
+    Rails.logger.info("DETALLE API PRODUCTO - Solicitando URL: #{full_url}")
+    
+    response = @conn.get(url, params)
+    
+    if response.success?
+      data = JSON.parse(response.body, symbolize_names: true)
+      result = data[:results]&.first
+      if result
+        Rails.logger.info("DETALLE API PRODUCTO - Encontrado: #{result[:descripcion]}")
+      else
+        Rails.logger.warn("DETALLE API PRODUCTO - No se encontró resultado en el JSON para: #{code}")
+      end
+      result
+    else
+      Rails.logger.error("DETALLE API PRODUCTO - Error #{response.status}: #{response.body}")
+      nil
+    end
+  rescue => e
+    Rails.logger.error("DETALLE API PRODUCTO - Excepción: #{e.message}")
+    nil
+  end
+
+  # Actualiza el estado de la comisión enviando un PATCH a la URL específica del recurso
+  def update_commission_status(resource_url, paid_status)
+    payload = { comision_pagada: paid_status }
+    
+    # Asegurar que la ruta termine en / antes de los query parameters
+    uri = URI.parse(resource_url)
+    path = uri.path
+    path += "/" unless path.end_with?("/")
+    
+    uri.path = path
+    normalized_url = uri.to_s
+    
+    Rails.logger.info("Enviando PATCH a: #{normalized_url} con payload: #{payload.to_json}")
+    
+    response = @conn.patch(normalized_url, payload.to_json, { "Content-Type" => "application/json" })
+    
+    if response.success?
+      { success: true, data: JSON.parse(response.body, symbolize_names: true) }
+    else
+      # Logging detallado para el desarrollador
+      Rails.logger.error("Fallo PATCH #{normalized_url}: #{response.status} - #{response.body}")
+      
+      # Capturar error detallado de la API
+      error_msg = begin
+        JSON.parse(response.body)["detail"] || response.body
+      rescue
+        response.body
+      end
+      
+      # Reportar error con contexto
+      status_text = "Status #{response.status}: #{error_msg}"
+      
+      { success: false, error: status_text, status: response.status, body: response.body }
+    end
+  rescue => e
+    Rails.logger.error("Excepción en update_commission_status: #{e.message}")
+    { success: false, error: e.message }
+  end
+
   # Obtiene la lista de usuarios.
   def fetch_users
     fetch_all_resources("/users/")

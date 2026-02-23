@@ -14,6 +14,7 @@ Rails.application.routes.draw do
   get "vendedor", to: "dashboard#vendedor"
   get "reporte", to: "dashboard#reporte"
   get "products", to: "dashboard#products_json"
+  post "update_commission", to: "dashboard#update_commission"
 
   root "dashboard#index"
 end

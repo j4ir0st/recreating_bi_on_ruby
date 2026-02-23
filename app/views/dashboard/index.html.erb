@@ -1,41 +1,82 @@
 <div class="dashboard-container" data-controller="dashboard">
   <!-- Header -->
-  <div class="header">
+  <!-- Header: Row 1 (Title & User) -->
+  <div class="header" style="justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 15px;">
     <div class="header-left">
       <h1>Calculador de Comisiones</h1>
       <p>Gestiona y calcula comisiones de vendedores por mes</p>
     </div>
-    <div class="header-right">
-      <div style="display:flex; flex-direction: row; align-items: center; gap: 20px;">
-      <form id="filter-form" style="display: contents;">
-        <div class="filters-panel">
-          <div class="filter-group">
-            <label>Año</label>
-            <select name="year" data-dashboard-target="yearSelect" data-action="change->dashboard#filterChanged">
-              <% (@years || []).each do |year| %>
-                <option value="<%= year %>" <%= 'selected' if @selected_year == year %>><%= year %></option>
-              <% end %>
+    <div class="header-right" style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
+      <div class="welcome-msg" style="color: var(--accent-cyan); font-weight: 600; font-size: 0.95rem; white-space: nowrap;">
+        Bienvenido, <%= session[:first_name].present? ? "#{session[:first_name]} #{session[:last_name]}" : (session[:username] || "Usuario") %>
+      </div>
+      <%= button_to "Cerrar Sesión", logout_path, method: :delete, class: "btn-logout", style: "background: transparent; border: 1px solid var(--accent-orange); color: var(--accent-orange); padding: 4px 12px; border-radius: 6px; font-size: 0.75rem; cursor: pointer; transition: var(--transition);" %>
+    </div>
+  </div>
+
+  <!-- Header: Row 2 (Filters) -->
+  <div class="filters-container" style="margin-bottom: 24px;">
+    <form id="filter-form">
+      <div class="filters-panel" style="display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end;">
+        <div class="filter-group" style="flex: 0 0 100px;">
+          <label>Año</label>
+          <select name="year" data-dashboard-target="yearSelect" data-action="change->dashboard#filterChanged">
+            <% (@years || []).each do |year| %>
+              <option value="<%= year %>" <%= 'selected' if @selected_year == year %>><%= year %></option>
+            <% end %>
+          </select>
+        </div>
+          <!-- Filtro Meses (Custom Multiselect) -->
+          <div class="filter-group" style="flex: 1; min-width: 150px;">
+            <label>Meses</label>
+            <div class="multiselect-container">
+              <div class="multiselect-trigger" data-action="click->dashboard#toggleDropdown">
+                <span><%= @selected_months.empty? || @selected_months.include?("Todas") ? "Todas" : (@selected_months.length > 2 ? "#{@selected_months.length} Meses" : @selected_months.join(', ')) %></span>
+                <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+              </div>
+              <div class="multiselect-dropdown">
+                <% (@dates || []).each_with_index do |month, i| %>
+                  <div class="multiselect-option">
+                    <input type="checkbox" name="date_range[]" value="<%= month %>" id="month_<%= i %>" 
+                           <%= 'checked' if @selected_months.include?(month) %>>
+                    <label for="month_<%= i %>"><%= month %></label>
+                  </div>
+                <% end %>
+              </div>
+            </div>
+          </div>
+
+          <!-- Filtro Vendedores (Custom Multiselect) -->
+          <div class="filter-group" style="flex: 3; min-width: 350px;">
+            <label>Vendedores</label>
+            <div class="multiselect-container">
+              <div class="multiselect-trigger" data-action="click->dashboard#toggleDropdown">
+                <span><%= @selected_vendors.empty? || @selected_vendors.include?("Todas") ? "Todas" : (@selected_vendors.length > 2 ? "#{@selected_vendors.length} Vendedores" : @selected_vendors.join(', ')) %></span>
+                <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+              </div>
+              <div class="multiselect-dropdown">
+                <% (@vendors || []).each_with_index do |vendor, i| %>
+                  <div class="multiselect-option">
+                    <input type="checkbox" name="vendor[]" value="<%= vendor %>" id="vendor_<%= i %>" 
+                           <%= 'checked' if @selected_vendors.include?(vendor) %>>
+                    <label for="vendor_<%= i %>"><%= vendor %></label>
+                  </div>
+                <% end %>
+              </div>
+            </div>
+          </div>
+
+          <!-- Filtro Comisión Pagada -->
+          <div class="filter-group" style="flex: 1; min-width: 140px;">
+            <label>Pago Comisión</label>
+            <select name="comision_pagada" data-dashboard-target="comisionPagadaSelect" data-action="change->dashboard#filterChanged">
+              <option value="Todo" <%= 'selected' if params[:comision_pagada] == 'Todo' || params[:comision_pagada].blank? %>>Todo</option>
+              <option value="S" <%= 'selected' if params[:comision_pagada] == 'S' %>>Pagada</option>
+              <option value="N" <%= 'selected' if params[:comision_pagada] == 'N' %>>Pendiente</option>
             </select>
           </div>
-          <div class="filter-group">
-            <label>Mes</label>
-            <select name="date_range" data-dashboard-target="dateSelect" data-action="change->dashboard#filterChanged">
-              <option value="Todas" <%= 'selected' if @selected_month == 'Todas' %>>Todas</option>
-              <% (@dates || []).each do |month| %>
-                <option value="<%= month %>" <%= 'selected' if @selected_month == month %>><%= month %></option>
-              <% end %>
-            </select>
-          </div>
-          <div class="filter-group">
-            <label>Vendedor</label>
-            <select name="vendor" data-dashboard-target="vendorSelect" data-action="change->dashboard#filterChanged" style="max-width: 250px;">
-              <option value="Todas" <%= 'selected' if params[:vendor].blank? || params[:vendor] == 'Todas' %>>Todas</option>
-              <% (@vendors || []).each do |vendor| %>
-                <option value="<%= vendor %>" <%= 'selected' if params[:vendor] == vendor %>><%= vendor %></option>
-              <% end %>
-            </select>
-          </div>
-          <div class="filter-group">
+
+          <div class="filter-group" style="flex: 1; min-width: 140px;">
             <label>Cancelado</label>
             <select name="cancelado" data-dashboard-target="canceladoSelect" data-action="change->dashboard#filterChanged">
               <option value="Todo" <%= 'selected' if @selected_cancelado == 'Todo' %>>Todo</option>
@@ -44,19 +85,7 @@
             </select>
           </div>
         </div>
-      </form>
-        
-        <div style="display: flex; flex-direction: row; align-items: center; gap: 12px;">
-          
-          <div style="text-align: right;">
-            <div class="welcome-msg" style="color: var(--accent-cyan); font-weight: 600; font-size: 0.9rem;">
-              Bienvenido, <%= session[:first_name].present? ? "#{session[:first_name]} #{session[:last_name]}" : (session[:username] || "Usuario") %>
-            </div>
-            <%= button_to "Cerrar Sesión", logout_path, method: :delete, class: "btn-logout", style: "background: transparent; border: 1px solid var(--accent-orange); color: var(--accent-orange); padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; cursor: pointer;" %>
-          </div>
-        </div>
-      </div>
-    </div>
+    </form>
   </div>
 
   <!-- Tabs -->

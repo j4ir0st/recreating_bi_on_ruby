@@ -2,7 +2,12 @@
 <div class="table-section">
   <div class="table-header" style="display: flex; justify-content: space-between; align-items: center;">
     <div>
-      <h3>Resumen de Ventas por Producto</h3>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <h3>Resumen de Ventas por Producto</h3>
+        <button data-action="click->dashboard#toggleCommissionEdit" class="btn-icon" title="Editar Comisiones" data-dashboard-target="editIcon" style="background: none; border: none; color: var(--accent-cyan); cursor: pointer; display: flex; align-items: center; padding: 5px;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-edit"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </button>
+      </div>
       <p>Detalle de comprobantes con comisión por SKU seleccionados</p>
     </div>
     <button data-action="click->dashboard#exportToExcel" class="btn-excel" title="Descargar Excel">
@@ -20,8 +25,9 @@
           <th class="text-center" style="width: 55px;">Can.</th>
           <th>Producto</th>
           <th class="text-right" style="width: 135px;">Precio (S/)</th>
-          <th class="text-center" style="width: 120px;">Comis. %</th>
+          <th class="text-center" style="width: 100px;">Comis. %</th>
           <th class="text-right" style="width: 135px;">Comisión (S/)</th>
+          <th class="text-center" style="width: 100px; display: none;" data-dashboard-target="commissionColumn">Pagada</th>
         </tr>
       </thead>
       <tbody>
@@ -51,12 +57,19 @@
             <td class="text-right" style="white-space: nowrap;">
               <strong style="color: var(--accent-cyan);">S/ <%= number_with_precision(item[:comision_soles].to_f, precision: 2, separator: '.', delimiter: ',') %></strong>
             </td>
+            <td class="text-center" style="display: none;" data-dashboard-target="commissionColumn">
+              <input type="checkbox" 
+                     class="commission-checkbox" 
+                     data-url="<%= item[:invoice_url] %>" 
+                     data-action="change->dashboard#updateCommission"
+                     <%= 'checked' if item[:comision_pagada] %>>
+            </td>
           </tr>
         <% end %>
       </tbody>
       <tfoot>
         <tr>
-          <td colspan="5"><strong>Total General</strong></td>
+          <td colspan="5"><strong>Total Periodos (<%= @selected_months.join(', ') %>)</strong></td>
           <td class="text-right" style="white-space: nowrap;">
             <strong>S/ <%= number_with_precision((details || []).sum { |i| i[:precio_soles].to_f }, precision: 2, separator: '.', delimiter: ',') %></strong>
           </td>

@@ -1,3 +1,5 @@
+class UnauthorizedError < StandardError; end
+
 class ApiClient
   # CONFIGURACIÓN DE URL DE LA API
   # Para producción, definir la variable de entorno API_BASE_URL en docker-compose.yml
@@ -8,7 +10,6 @@ class ApiClient
   # Método de clase para autenticar al usuario y obtener un token JWT.
   def self.authenticate(username, password)
     conn = Faraday.new(url: BASE_URL) do |faraday|
-      faraday.request :json
       # El middleware de respuesta JSON se ha eliminado para evitar errores de parseo automáticos.
       faraday.adapter Faraday.default_adapter
       
@@ -19,7 +20,7 @@ class ApiClient
       faraday.headers["Accept"] = "application/json"
     end
 
-    response = conn.post("/api/token/", { username: username, password: password })
+    response = conn.post("/api/token/", JSON.generate({ username: username, password: password }), { "Content-Type" => "application/json" })
     
     if response.success?
       body = JSON.parse(response.body, symbolize_names: true)
@@ -52,12 +53,25 @@ class ApiClient
 
   # Obtiene los detalles de facturas (una sola página).
   # Ahora la API retorna información anidada en 'fd' (Factura Detalle).
-  def fetch_details(page: 1, start_date: nil, end_date: nil, vendor: nil, product_codes: nil)
-    params = { format: :json, page: page, page_size: 1000 }
-    params[:fecha_emision__gte] = start_date if start_date
-    params[:fecha_emision__lte] = end_date if end_date
-    params[:vendedor] = vendor if vendor.present? && vendor != "Todas"
-    params[:fd__prod] = product_codes if product_codes.present?
+  def fetch_details(page: 1, **extra_params)
+    # canje=T018,- excluye siempre las facturas de canje de los cálculos
+    params = { format: :json, page: page, page_size: 1000, canje: "T018,-" }.merge(extra_params)
+    
+    # Soporte para alias de parámetros comunes (Retrocompatibilidad o claridad)
+    params[:fecha_emision__gte] ||= params.delete(:start_date) if params[:start_date]
+    params[:fecha_emision__lte] ||= params.delete(:end_date) if params[:end_date]
+    
+    # Soporte para 'product_codes' -> 'fd__prod'
+    params[:fd__prod] ||= params.delete(:product_codes) if params[:product_codes]
+    
+    # Limpieza específica para 'Todas' que no es un valor real de API
+    if params[:vendedor] == "Todas"
+      params.delete(:vendedor)
+    end
+    
+    if params[:vendor] == "Todas"
+      params.delete(:vendor)
+    end
 
     url = "/Fact_Detalle/"
     
@@ -66,6 +80,8 @@ class ApiClient
     
     if response.success?
       JSON.parse(response.body, symbolize_names: true)
+    elsif response.status == 401
+      raise UnauthorizedError, "Token expirado"
     else
       Rails.logger.error("Error API (Detalles): #{response.status} - #{response.body}")
       { count: 0, results: [] }
@@ -79,7 +95,7 @@ class ApiClient
   end
 
   # Obtiene TODAS las páginas disponibles para un rango de fechas.
-  def fetch_details_pages(max_pages: 50, start_date: nil, end_date: nil, vendor: nil, product_codes: nil)
+  def fetch_details_pages(max_pages: 50, **params)
     all_results = []
     total_count = 0
     page = 1
@@ -87,7 +103,7 @@ class ApiClient
     loop do
       break if page > max_pages
 
-      data = fetch_details(page: page, start_date: start_date, end_date: end_date, vendor: vendor, product_codes: product_codes)
+      data = fetch_details(page: page, **params)
 
       if data.is_a?(Hash) && data[:results]
         total_count = data[:count] || 0
@@ -171,9 +187,36 @@ class ApiClient
     fetch_all_resources("/Repr_Comision/")
   end
 
-  # Obtener Tabla Maestro de Productos (para descripciones)
+  # Obtener Tabla Maestra de Productos (todas las páginas)
   def fetch_products
     fetch_all_resources("/SI_Producto/")
+  end
+
+  # Obtener descripciones de múltiples productos en una sola llamada con codigo__in
+  def fetch_products_by_codes(codes)
+    return {} if codes.blank?
+    # NO usar CGI.escape — las comas deben enviarse literales para que Django las interprete como lista
+    codes_param = codes.map(&:to_s).map(&:strip).join(",")
+    # Construir URL sin encoding de comas
+    url = "/SI_Producto/?format=json&codigo__in=#{codes_param}&fields=codigo,descripcion&page_size=500"
+    Rails.logger.info("=== FETCH PRODUCTS BATCH (#{codes.length} codes) — URL: #{BASE_URL}#{url} ===")
+    response = @conn.get(url)
+    if response.success?
+      data = JSON.parse(response.body, symbolize_names: true)
+      results = data[:results] || []
+      if results.any?
+        Rails.logger.info("=== SI_Producto BATCH OK: #{results.length} results — first: #{results.first.inspect} ===")
+      else
+        Rails.logger.warn("=== SI_Producto BATCH 0 RESULTS — body[0..400]: #{response.body[0..400]} ===")
+      end
+      results.each_with_object({}) { |p, h| h[p[:codigo].to_s.strip] = p[:descripcion].to_s.strip }
+    else
+      Rails.logger.error("Error al obtener productos en lote: #{response.status} — #{response.body[0..200]}")
+      {}
+    end
+  rescue => e
+    Rails.logger.error("Error en fetch_products_by_codes: #{e.message}")
+    {}
   end
 
   # Obtener Tabla de Comisiones por Producto
@@ -193,14 +236,17 @@ class ApiClient
     response = @conn.get(url, params)
     
     if response.success?
-      data = JSON.parse(response.body, symbolize_names: true)
-      result = data[:results]&.first
+      parsed = JSON.parse(response.body, symbolize_names: true)
+      # SI_Producto usa :codigo como campo clave (no :prod)
+      result = parsed[:results]&.find { |p| p[:codigo].to_s.strip == code.to_s.strip }
       if result
-        Rails.logger.info("DETALLE API PRODUCTO - Encontrado: #{result[:descripcion]}")
+        result
       else
         Rails.logger.warn("DETALLE API PRODUCTO - No se encontró resultado en el JSON para: #{code}")
       end
       result
+    elsif response.status == 401
+      raise UnauthorizedError, "Token expirado"
     else
       Rails.logger.error("DETALLE API PRODUCTO - Error #{response.status}: #{response.body}")
       nil
@@ -254,6 +300,43 @@ class ApiClient
     fetch_all_resources("/users/")
   end
 
+  # Obtiene una página del historial de auditoría de comisiones (60 registros por página, desc por id)
+  def get_audit_history(page: 1, comprobantes_filter: nil, usuario_filter: nil)
+    url = "/FactComision_Audit/?format=json&page=#{page}"
+    url += "&comprobantes__contains=#{CGI.escape(comprobantes_filter)}" if comprobantes_filter.present?
+    url += "&usuario__contains=#{CGI.escape(usuario_filter)}" if usuario_filter.present?
+    Rails.logger.info("=== GET AUDIT HISTORY: #{BASE_URL}#{url} ===")
+    response = @conn.get(url)
+    if response.success?
+      begin
+        data = JSON.parse(response.body, symbolize_names: true)
+        Rails.logger.info("=== AUDIT HISTORY RESPONSE status=#{response.status} count=#{data[:count]} next=#{data[:next]} ===")
+        {
+          records: data[:results] || [],
+          has_more: data[:next].present?
+        }
+      rescue => e
+        Rails.logger.error("Error al parsear auditoría: #{e.message}")
+        { records: [], has_more: false }
+      end
+    else
+      Rails.logger.error("Error al obtener auditoría: HTTP #{response.status} - #{response.body}")
+      { records: [], has_more: false }
+    end
+  end
+
+  # Crea un registro de auditoría
+  def create_audit_record(data)
+    # data: { comprobantes, cant_fact, total_comision, fecha_hora, usuario }
+    response = @conn.post("/FactComision_Audit/?format=json", data.to_json, { "Content-Type" => "application/json" })
+    if response.success?
+      { success: true, data: JSON.parse(response.body, symbolize_names: true) }
+    else
+      Rails.logger.error("Error al crear auditoría: #{response.status} - BODY: #{response.body}")
+      { success: false, error: response.body }
+    end
+  end
+
   private
 
   # Método genérico para traer todos los recursos paginados con reintentos básicos.
@@ -286,6 +369,8 @@ class ApiClient
             Rails.logger.error("#{endpoint} Error de JSON: #{e.message}")
             break
           end
+        elsif response.status == 401
+          raise UnauthorizedError, "Token expirado"
         else
           Rails.logger.error("#{endpoint} Error de API: #{response.status} - #{response.body}")
           break 
@@ -299,4 +384,5 @@ class ApiClient
     Rails.logger.info("#{endpoint} Total obtenidos: #{all_results.count}")
     all_results
   end
+
 end

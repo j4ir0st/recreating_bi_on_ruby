@@ -18,7 +18,7 @@
   <div class="filters-container" style="margin-bottom: 24px;">
     <form id="filter-form">
       <div class="filters-panel" style="display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end;">
-        <div class="filter-group" style="flex: 0 0 100px;">
+        <div class="filter-group" style="flex: 0 0 125px;">
           <label>Año</label>
           <select name="year" data-dashboard-target="yearSelect" data-action="change->dashboard#filterChanged">
             <% (@years || []).each do |year| %>
@@ -30,8 +30,17 @@
           <div class="filter-group" style="flex: 1; min-width: 150px;">
             <label>Meses</label>
             <div class="multiselect-container">
+              <%
+                selected_label = if @selected_months.empty? || @selected_months.include?("Todas")
+                  "Todas"
+                elsif @selected_months.length > 2
+                  "#{@selected_months.length} Meses"
+                else
+                  @selected_months.map { |s| mes_label(s) }.join(', ')
+                end
+              %>
               <div class="multiselect-trigger" data-action="click->dashboard#toggleDropdown">
-                <span><%= @selected_months.empty? || @selected_months.include?("Todas") ? "Todas" : (@selected_months.length > 2 ? "#{@selected_months.length} Meses" : @selected_months.join(', ')) %></span>
+                <span><%= selected_label %></span>
                 <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2"/></svg>
               </div>
               <div class="multiselect-dropdown">
@@ -39,7 +48,7 @@
                   <div class="multiselect-option">
                     <input type="checkbox" name="date_range[]" value="<%= month %>" id="month_<%= i %>" 
                            <%= 'checked' if @selected_months.include?(month) %>>
-                    <label for="month_<%= i %>"><%= month %></label>
+                    <label for="month_<%= i %>"><%= mes_label(month) %></label>
                   </div>
                 <% end %>
               </div>
@@ -88,18 +97,76 @@
     </form>
   </div>
 
-  <!-- Tabs -->
-  <div class="tabs">
-    <button class="tab-btn <%= 'active' if @active_tab == 'vendedor' %>"
-            data-tab="vendedor"
-            data-action="click->dashboard#switchTab">Vendedor</button>
-    <button class="tab-btn <%= 'active' if @active_tab == 'productos' %>"
-            data-tab="productos"
-            data-action="click->dashboard#switchTab">Productos</button>
-    <button class="tab-btn <%= 'active' if @active_tab == 'reporte' %>"
-            data-tab="reporte"
-            data-action="click->dashboard#switchTab">Reportes</button>
+  <!-- Tabs + Filtros de Historial en la misma fila -->
+  <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px;">
+    <div class="tabs" style="flex: 0 0 auto;">
+      <button class="tab-btn <%= 'active' if @active_tab == 'vendedor' %>"
+              data-tab="vendedor"
+              data-action="click->dashboard#switchTab">Vendedor</button>
+      <button class="tab-btn <%= 'active' if @active_tab == 'productos' %>"
+              data-tab="productos"
+              data-action="click->dashboard#switchTab">Productos</button>
+      <button class="tab-btn <%= 'active' if @active_tab == 'reporte' %>"
+              data-tab="reporte"
+              data-action="click->dashboard#switchTab">Reportes</button>
+      <button class="tab-btn <%= 'active' if @active_tab == 'historial' %>"
+              data-tab="historial"
+              data-action="click->dashboard#switchTab">Historial</button>
+    </div>
+
+    <!-- Filtros exclusivos del Historial (ocultos en otras pestañas) -->
+    <div id="historial-filters"
+         style="display: <%= @active_tab == 'historial' ? 'flex' : 'none' %>;
+                margin-left: auto; gap: 8px; align-items: center; flex-wrap: nowrap;">
+      <div class="filter-group" style="min-width: 160px;">
+        <label style="font-size:0.7rem;">Comprobantes</label>
+        <input type="text" id="filter-comprobantes" placeholder="Ej: F003-16650"
+               value="<%= params[:comprobantes_filter] %>"
+               style="width:100%; background:transparent; border:none; color:var(--text-primary);
+                      font-family:'Inter',sans-serif; font-size:0.85rem; outline:none; padding:6px 0;">
+      </div>
+      <div class="filter-group" style="min-width: 140px;">
+        <label style="font-size:0.7rem;">Usuario</label>
+        <input type="text" id="filter-usuario" placeholder="Ej: Jairo"
+               value="<%= params[:usuario_filter] %>"
+               style="width:100%; background:transparent; border:none; color:var(--text-primary);
+                      font-family:'Inter',sans-serif; font-size:0.85rem; outline:none; padding:6px 0;">
+      </div>
+    </div>
   </div>
+
+  <script>
+  // Mostrar/ocultar filtros de historial según pestaña activa
+  document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.tab-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var filters = document.getElementById('historial-filters');
+        if (filters) filters.style.display = this.dataset.tab === 'historial' ? 'flex' : 'none';
+      });
+    });
+
+    // Debounce helper
+    function debounce(fn, delay) {
+      var t;
+      return function() { clearTimeout(t); t = setTimeout(fn, delay); };
+    }
+
+    // Recargar historial cuando se escribe en los filtros
+    function reloadHistorial() {
+      var comprobantes = (document.getElementById('filter-comprobantes') || {}).value || '';
+      var usuario = (document.getElementById('filter-usuario') || {}).value || '';
+      var event = new CustomEvent('historial:filter', { detail: { comprobantes: comprobantes, usuario: usuario } });
+      document.dispatchEvent(event);
+    }
+
+    var debouncedReload = debounce(reloadHistorial, 400);
+    var fc = document.getElementById('filter-comprobantes');
+    var fu = document.getElementById('filter-usuario');
+    if (fc) fc.addEventListener('input', debouncedReload);
+    if (fu) fu.addEventListener('input', debouncedReload);
+  });
+  </script>
+
 
   <!-- KPI Cards removed as per user request -->
 
@@ -111,6 +178,12 @@
       <%= render partial: "dashboard/tabs/productos", locals: { dashboard: @dashboard, details: @product_details } %>
     <% elsif @active_tab == "reporte" %>
       <%= render partial: "dashboard/tabs/reporte", locals: { dashboard: @dashboard, monthly_data: @monthly_data } %>
+    <% elsif @active_tab == "historial" %>
+      <%= render partial: "dashboard/tabs/historial", locals: {
+        audit_history: @audit_history,
+        usuario_filter: params[:usuario_filter].to_s,
+        comprobantes_filter: params[:comprobantes_filter].to_s
+      } %>
     <% end %>
   </div>
 </div>

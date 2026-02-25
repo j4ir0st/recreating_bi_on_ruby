@@ -1,0 +1,210 @@
+<!-- Historial Tab: Registro de Cambios en Comisiones -->
+<div class="table-section">
+  <div class="table-header">
+    <h3>Historial de Auditoría</h3>
+    <p>Registro cronológico de actualizaciones de comisiones pagadas</p>
+  </div>
+  <div class="table-wrapper" id="audit-table-wrapper" style="max-height: 520px; overflow-y: auto;">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th style="width: 180px;">Fecha y Hora</th>
+          <th style="width: 150px;">Usuario</th>
+          <th style="width: 100px;" class="text-center">Cant. Fact</th>
+          <th style="width: 135px;" class="text-right">Total Comisión</th>
+          <th>Comprobantes</th>
+        </tr>
+      </thead>
+      <tbody id="audit-tbody">
+        <% if (audit_history[:records] || []).empty? %>
+          <tr>
+            <td colspan="5" class="text-center" style="padding: 40px; color: var(--text-muted);">
+              No hay registros de auditoría disponibles.
+            </td>
+          </tr>
+        <% else %>
+          <% (audit_history[:records] || []).each do |audit| %>
+          <%
+            raw_fecha = audit[:fecha_hora] || audit["fecha_hora"]
+            fecha_fmt = begin
+              Time.parse(raw_fecha.to_s).strftime("%d/%m/%Y %H:%M:%S")
+            rescue
+              raw_fecha
+            end
+          %>
+            <tr>
+              <td><%= fecha_fmt %></td>
+              <td>
+                <span style="font-weight: 600; color: var(--accent-cyan);">
+                  <%= audit[:usuario] || audit["usuario"] %>
+                </span>
+              </td>
+              <td class="text-center">
+                <span class="status-badge" style="background: rgba(0, 212, 255, 0.1); color: var(--accent-cyan); border: 1px solid rgba(0, 212, 255, 0.2);">
+                  <%= audit[:cant_fact] || audit["cant_fact"] %>
+                </span>
+              </td>
+              <%
+                total_val = (audit[:total_comision] || audit["total_comision"]).to_f
+                total_color = total_val < 0 ? '#ef4444' : 'var(--accent-green)'
+                total_sign  = total_val < 0 ? '' : ''
+              %>
+              <td class="text-right" style="font-weight: 600; color: <%= total_color %>">
+                S/ <%= number_with_precision(total_val, precision: 2, separator: '.', delimiter: ',') %>
+              </td>
+              <td style="font-size: 0.8rem; color: var(--text-secondary); max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="<%= audit[:comprobantes] || audit["comprobantes"] %>">
+                <%= audit[:comprobantes] || audit["comprobantes"] %>
+              </td>
+            </tr>
+          <% end %>
+        <% end %>
+      </tbody>
+    </table>
+    <div id="audit-loading" style="display:none; text-align:center; padding:16px; color:var(--text-muted);">
+      Cargando más registros...
+    </div>
+    <div id="audit-end" style="display:none; text-align:center; padding:16px; color:var(--text-muted); font-size:0.8rem;">
+      ✓ No hay más registros
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  // Estado de paginación del Historial
+  var auditPage = 1;
+  var auditHasMore = <%= (audit_history[:has_more] ? 'true' : 'false') %>;
+  var auditLoading = false;
+  var auditComprobantes = '';
+  var auditUsuario = '';
+  var wrapper = document.getElementById('audit-table-wrapper');
+  var tbody = document.getElementById('audit-tbody');
+  var loadingEl = document.getElementById('audit-loading');
+  var endEl = document.getElementById('audit-end');
+
+  // Mostrar u ocultar indicador de "sin más páginas"
+  if (!auditHasMore) {
+    endEl.style.display = 'block';
+  }
+
+  function getBasePath() {
+    return window.location.pathname.includes('/app_comisiones') ? '/app_comisiones/' : '/';
+  }
+
+  function buildUrl(page) {
+    var url = getBasePath() + 'historial_data?page=' + page;
+    if (auditComprobantes) url += '&comprobantes_filter=' + encodeURIComponent(auditComprobantes);
+    if (auditUsuario)      url += '&usuario_filter='      + encodeURIComponent(auditUsuario);
+    return url;
+  }
+
+  function renderRow(audit) {
+    var rawFecha = audit.fecha_hora || '';
+    var fecha = rawFecha;
+    try {
+      var d = new Date(rawFecha);
+      if (!isNaN(d.getTime())) {
+        var dd = String(d.getDate()).padStart(2,'0');
+        var mm = String(d.getMonth()+1).padStart(2,'0');
+        var yyyy = d.getFullYear();
+        var hh = String(d.getHours()).padStart(2,'0');
+        var min = String(d.getMinutes()).padStart(2,'0');
+        var ss = String(d.getSeconds()).padStart(2,'0');
+        fecha = dd+'/'+mm+'/'+yyyy+' '+hh+':'+min+':'+ss;
+      }
+    } catch(e) {}
+    var usuario = audit.usuario || '';
+    var cant = audit.cant_fact || '';
+    var totalVal = parseFloat(audit.total_comision || 0);
+    var totalColor = totalVal < 0 ? '#ef4444' : 'var(--accent-green)';
+    var total = totalVal.toFixed(2);
+    var comps = audit.comprobantes || '';
+    return '<tr>' +
+      '<td>' + fecha + '</td>' +
+      '<td><span style="font-weight:600;color:var(--accent-cyan);">' + usuario + '</span></td>' +
+      '<td class="text-center"><span class="status-badge" style="background:rgba(0,212,255,0.1);color:var(--accent-cyan);border:1px solid rgba(0,212,255,0.2);">' + cant + '</span></td>' +
+      '<td class="text-right" style="font-weight:600;color:' + totalColor + ';">S/ ' + total + '</td>' +
+      '<td style="font-size:0.8rem;color:var(--text-secondary);max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + comps + '">' + comps + '</td>' +
+      '</tr>';
+  }
+
+  function loadNextPage() {
+    if (auditLoading || !auditHasMore) return;
+    auditLoading = true;
+    auditPage += 1;
+    loadingEl.style.display = 'block';
+
+    fetch(buildUrl(auditPage), {
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      loadingEl.style.display = 'none';
+      auditLoading = false;
+
+      if (data.error) {
+        tbody.insertAdjacentHTML('beforeend',
+          '<tr><td colspan="5" class="text-center" style="color:var(--accent-orange);">' + data.error + '</td></tr>');
+        return;
+      }
+
+      var records = data.records || [];
+      auditHasMore = data.has_more;
+
+      records.forEach(function(audit) {
+        tbody.insertAdjacentHTML('beforeend', renderRow(audit));
+      });
+
+      if (!auditHasMore) {
+        endEl.style.display = 'block';
+      }
+    })
+    .catch(function(err) {
+      loadingEl.style.display = 'none';
+      auditLoading = false;
+      console.error('Error cargando historial:', err);
+    });
+  }
+
+  // Recargar tabla desde cero con nuevos filtros
+  function reloadWithFilters(comprobantes, usuario) {
+    auditComprobantes = comprobantes || '';
+    auditUsuario = usuario || '';
+    auditPage = 1;
+    auditHasMore = true;
+    auditLoading = false;
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center" style="padding:20px;color:var(--text-muted);">Buscando...</td></tr>';
+    endEl.style.display = 'none';
+
+    fetch(buildUrl(1), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      auditHasMore = data.has_more;
+      var records = data.records || [];
+      tbody.innerHTML = '';
+      if (records.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center" style="padding:40px;color:var(--text-muted);">Sin resultados</td></tr>';
+      } else {
+        records.forEach(function(a) { tbody.insertAdjacentHTML('beforeend', renderRow(a)); });
+      }
+      endEl.style.display = auditHasMore ? 'none' : 'block';
+    })
+    .catch(function(err) { console.error('Filter reload error:', err); });
+  }
+
+  // Escuchar evento de filtros desde index.html.erb
+  document.addEventListener('historial:filter', function(e) {
+    reloadWithFilters(e.detail.comprobantes, e.detail.usuario);
+  });
+
+  // Detectar scroll al fondo de la tabla
+  if (wrapper) {
+    wrapper.addEventListener('scroll', function() {
+      var threshold = 80;
+      if (wrapper.scrollTop + wrapper.clientHeight >= wrapper.scrollHeight - threshold) {
+        loadNextPage();
+      }
+    });
+  }
+})();
+</script>

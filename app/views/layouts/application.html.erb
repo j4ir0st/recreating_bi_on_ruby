@@ -24,13 +24,15 @@
 
     // Controlador Stimulus del Dashboard
     application.register("dashboard", class extends Controller {
-      static targets = ["content", "vendorSelect", "dateSelect", "yearSelect", "canceladoSelect"]
+      static targets = ["content", "vendorSelect", "dateSelect", "yearSelect", "canceladoSelect", 
+                        "editIcon", "commissionColumn", "selectAllCheckbox", "itemCheckbox"]
 
       connect() {
         // Recuperar la pestaña activa actual
         this.currentTab = document.querySelector('.tab-btn.active')?.dataset.tab || "vendedor";
         this.basePath = this.getBasePath();
         this.loadProductDescriptions();
+        this.pendingChanges = false;
 
         // Cerrar dropdowns al hacer click fuera y ACTUALIZAR si hubo cambios
         document.addEventListener("click", (e) => {
@@ -116,6 +118,67 @@
           checkbox.style.opacity = '1';
         });
       }
+ 
+      toggleSelectAll(e) {
+        const checked = e.target.checked;
+        this.itemCheckboxTargets.forEach(cb => {
+          cb.checked = checked;
+        });
+        this.pendingChanges = true;
+      }
+
+      onItemCheckboxChange() {
+        this.pendingChanges = true;
+      }
+
+      massUpdateCommissions() {
+        const updates = this.itemCheckboxTargets
+          .filter(cb => {
+            // Comparar estado actual con el estado inicial (atributo checked de HTML)
+            const initialState = cb.defaultChecked;
+            return cb.checked !== initialState;
+          })
+          .map(cb => ({
+            url: cb.dataset.url,
+            paid: cb.checked,
+            invoice_number: cb.dataset.invoiceNumber,
+            commission_amount: cb.dataset.commissionAmount
+          }));
+
+        if (updates.length === 0) {
+          this.showToast("No hay cambios para guardar", "info");
+          return;
+        }
+
+        if (window.showLoader) window.showLoader();
+
+        fetch(`${this.basePath}mass_update_commissions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content
+          },
+          body: JSON.stringify({ updates: updates })
+        })
+        .then(r => r.json())
+        .then(data => {
+          if (data.success) {
+            this.showToast(data.message, "success");
+            // Redirigir a la pestaña de historial tras un update exitoso
+            setTimeout(() => {
+              window.location.href = `${this.basePath}?tab=historial`;
+            }, 1000);
+          } else {
+            this.showToast(data.message, "error");
+            if (window.hideLoader) window.hideLoader();
+          }
+        })
+        .catch(err => {
+          console.error("Mass Update Error:", err);
+          this.showToast("Error al realizar la actualización masiva");
+          if (window.hideLoader) window.hideLoader();
+        });
+      }
 
       getBasePath() {
         // Obtener el subpath actual (ej: /app_comisiones/)
@@ -147,7 +210,17 @@
           headers: { "X-Requested-With": "XMLHttpRequest" }
         })
           .then(r => {
-            if (!r.ok) throw new Error("No se pudo cargar la pestaña");
+            if (!r.ok) {
+              // Leer el cuerpo del error para mostrar el mensaje real
+              return r.text().then(body => {
+                let errorMsg = "El servidor encontró un problema";
+                try {
+                  const parsed = JSON.parse(body);
+                  if (parsed.error) errorMsg = parsed.error;
+                } catch (_) { /* body no es JSON */ }
+                throw new Error(errorMsg);
+              });
+            }
             return r.text();
           })
           .then(html => {
@@ -160,7 +233,7 @@
           .catch(err => {
             console.error("Tab Error:", err);
             if (window.hideLoader) window.hideLoader();
-            this.showToast("No se pudo cargar la información: El servidor encontró un problema.");
+            this.showToast(`No se pudo cargar la pestaña: ${err.message}`, 'error');
           });
       }
 
@@ -192,29 +265,35 @@
         }, duration);
       }
 
-      // Método llamado al cambiar filtros
       toggleCommissionEdit() {
-        const columns = this.element.querySelectorAll('[data-dashboard-target="commissionColumn"]');
-        const iconBtn = this.element.querySelector('[data-dashboard-target="editIcon"]');
+        const columns = this.commissionColumnTargets;
+        const iconBtn = this.hasEditIconTarget ? this.editIconTarget : null;
         
         if (columns.length === 0) return;
         
         const isVisible = columns[0].style.display !== 'none';
-        const newDisplay = isVisible ? 'none' : 'table-cell';
         
-        columns.forEach(col => col.style.display = newDisplay);
-        
-        // Actualizar Icono
-        if (iconBtn) {
-          if (!isVisible) {
-            // Cambiar a Icono Check (Guardado/Listo)
-            iconBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
-            iconBtn.title = "Ocultar edición";
-            this.showToast("Modo edición activado", "info");
-          } else {
-            // Cambiar a Icono Editar (Lápiz)
+        if (isVisible) {
+          // Si estamos cerrando y hubo cambios, guardamos masivamente
+          if (this.pendingChanges) {
+            this.massUpdateCommissions();
+            this.pendingChanges = false;
+          }
+          columns.forEach(col => col.style.display = 'none');
+          
+          if (iconBtn) {
             iconBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-edit"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
             iconBtn.title = "Editar comisiones";
+          }
+        } else {
+          // Abriendo modo edición
+          columns.forEach(col => col.style.display = 'table-cell');
+          this.pendingChanges = false;
+          
+          if (iconBtn) {
+            iconBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+            iconBtn.title = "Guardar cambios y refrescar";
+            this.showToast("Modo edición activado. Selecciona las comisiones pagadas y presiona el check para guardar.", "info");
           }
         }
       }
@@ -529,19 +608,20 @@
     .filter-group {
       background:var(--bg-card); border:1px solid var(--border-color);
       border-radius:var(--radius-md); padding:10px 14px;
+      display: flex; flex-direction: column; justify-content: space-between;
+      min-height: 70px;
     }
     .filter-group label {
-      display:block; font-size:0.7rem; font-weight:600; color:var(--text-secondary);
+      display:block; font-size:0.7rem; font-weight:700; color:var(--text-muted);
       text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;
     }
     .filter-group select {
       width:100%; background:var(--bg-secondary); color:var(--text-primary);
-      border:1px solid var(--border-color); border-radius:4px; padding:6px 10px;
+      border:1px solid var(--border-color); border-radius:4px;
       font-family:'Inter',sans-serif; font-size:0.85rem; cursor:pointer; outline:none;
-      transition:var(--transition);
+      padding: 6px 8px; min-height: 38px;
     }
     .filter-group select:hover, .filter-group select:focus { border-color:var(--accent-blue); }
-    .filter-group select:focus { box-shadow:0 0 0 2px rgba(0,212,255,0.2); }
 
     .tabs {
       display:flex; gap:4px; margin-bottom:24px; background:var(--bg-secondary);
@@ -647,6 +727,11 @@
     .status-paid { background:rgba(72,187,120,0.15); color:#48bb78; border:1px solid rgba(72,187,120,0.3); }
     .status-pending { background:rgba(255,107,53,0.12); color:#ff6b35; border:1px solid rgba(255,107,53,0.3); }
 
+    /* Clases de Producto */
+    .status-badge.clase-a { background:rgba(0,212,255,0.15); color:#00d4ff; border:1px solid rgba(0,212,255,0.3); }
+    .status-badge.clase-b { background:rgba(159,122,234,0.15); color:#9f7aea; border:1px solid rgba(159,122,234,0.3); }
+    .status-badge.clase-c { background:rgba(237,137,54,0.15); color:#ed8936; border:1px solid rgba(237,137,54,0.3); }
+
     /* === LOADING OVERLAY === */
     #global-loader {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -743,11 +828,12 @@
       position: relative; width: 100%;
     }
     .multiselect-trigger {
-      padding: 8px 12px; background: var(--bg-card);
-      border: 1px solid var(--border-color); border-radius: 6px;
+      padding: 6px 10px; background: var(--bg-secondary);
+      border: 1px solid var(--border-color); border-radius: 4px;
       cursor: pointer; display: flex; justify-content: space-between;
       align-items: center; min-height: 38px; font-size: 0.85rem;
     }
+    .multiselect-trigger:hover { border-color: var(--accent-blue); }
     .multiselect-dropdown {
       position: absolute; top: 100%; left: 0; right: 0;
       background: var(--bg-card); border: 1px solid var(--border-color);

@@ -19,23 +19,28 @@
     <table class="data-table">
       <thead>
         <tr>
-          <th style="width: 120px;">Factura</th>
+          <th style="width: 85px;">Cliente</th>
           <th style="width: 85px;">Fecha</th>
-          <th style="width: 160px;">Vendedor</th>
+          <th style="width: 120px;">Factura</th>
           <th class="text-center" style="width: 55px;">Can.</th>
+          <th class="text-center" style="width: 55px;" title="Comisión Pagada">Pag.</th>
+          <th class="text-center" style="width: 55px;">Clase</th>
           <th>Producto</th>
           <th class="text-right" style="width: 135px;">Precio (S/)</th>
-          <th class="text-center" style="width: 100px;">Comis. %</th>
+          <th class="text-left" style="width: 200px;">Nombre Cliente</th>
           <th class="text-right" style="width: 135px;">Comisión (S/)</th>
-          <th class="text-center" style="width: 100px; display: none;" data-dashboard-target="commissionColumn">Pagada</th>
+          <th class="text-center" style="width: 100px; display: none;" data-dashboard-target="commissionColumn">
+            Pagada<br>
+            <input type="checkbox" data-action="change->dashboard#toggleSelectAll" data-dashboard-target="selectAllCheckbox">
+          </th>
         </tr>
       </thead>
       <tbody>
         <% (details || []).each do |item| %>
           <tr>
-            <td><%= item[:numero_factura] %></td>
+            <td><span title="<%= item[:tipo_cliente] %>"><%= item[:tipo_cliente] %></span></td>
             <td><%= item[:fecha_emision] %></td>
-            <td><%= item[:vendedor] %></td>
+            <td><%= item[:numero_factura] %></td>
             <td class="text-center">
               <% if item[:cancelado] == "S" %>
                 <span class="status-badge status-paid" title="Cancelado">S</span>
@@ -43,16 +48,31 @@
                 <span class="status-badge status-pending" title="Pendiente">N</span>
               <% end %>
             </td>
-            <td data-product-code="<%= item[:producto_codigo] %>" style="min-width: 250px;">
-              <span class="product-name" title="<%= item[:producto_codigo] %>">
+            <td class="text-center">
+              <% if item[:comision_pagada] %>
+                <span class="status-badge status-paid" title="Pagada">SI</span>
+              <% else %>
+                <span class="status-badge status-pending" title="No Pagada">NO</span>
+              <% end %>
+            </td>
+            <td class="text-center">
+              <% if item[:clase].present? %>
+                <span class="status-badge clase-<%= item[:clase].downcase %>"><%= item[:clase] %></span>
+              <% else %>
+                -
+              <% end %>
+            </td>
+            <td data-product-code="<%= item[:producto_codigo] %>"
+                style="min-width: 200px; max-width: 260px; white-space: normal; word-break: break-word; vertical-align: top;">
+              <span class="product-name" title="<%= item[:producto_codigo] %>" style="display:block;">
                 <%= item[:producto_codigo] %>
               </span>
             </td>
             <td class="text-right" style="white-space: nowrap; font-weight: 600;">
               S/ <%= number_with_precision(item[:precio_soles].to_f, precision: 2, separator: '.', delimiter: ',') %>
             </td>
-            <td class="text-center">
-              <%= number_with_precision(item[:comision_pct].to_f * 100, precision: 2) %>%
+            <td class="text-left">
+              <%= item[:nombre_cliente] %>
             </td>
             <td class="text-right" style="white-space: nowrap;">
               <strong style="color: var(--accent-cyan);">S/ <%= number_with_precision(item[:comision_soles].to_f, precision: 2, separator: '.', delimiter: ',') %></strong>
@@ -60,8 +80,11 @@
             <td class="text-center" style="display: none;" data-dashboard-target="commissionColumn">
               <input type="checkbox" 
                      class="commission-checkbox" 
+                     data-dashboard-target="itemCheckbox"
                      data-url="<%= item[:invoice_url] %>" 
-                     data-action="change->dashboard#updateCommission"
+                     data-invoice-number="<%= item[:numero_factura] %>"
+                     data-commission-amount="<%= item[:comision_soles] %>"
+                     data-action="change->dashboard#onItemCheckboxChange"
                      <%= 'checked' if item[:comision_pagada] %>>
             </td>
           </tr>
@@ -69,7 +92,7 @@
       </tbody>
       <tfoot>
         <tr>
-          <td colspan="5"><strong>Total Periodos (<%= @selected_months.join(', ') %>)</strong></td>
+          <td colspan="7"><strong>Total Periodos (<%= @selected_months.join(', ') %>)</strong></td>
           <td class="text-right" style="white-space: nowrap;">
             <strong>S/ <%= number_with_precision((details || []).sum { |i| i[:precio_soles].to_f }, precision: 2, separator: '.', delimiter: ',') %></strong>
           </td>
@@ -77,6 +100,7 @@
           <td class="text-right" style="white-space: nowrap;">
             <strong style="color: var(--accent-cyan); font-size: 1.1rem;">S/ <%= number_with_precision((details || []).sum { |i| i[:comision_soles].to_f }, precision: 2, separator: '.', delimiter: ',') %></strong>
           </td>
+          <td data-dashboard-target="commissionColumn" style="display: none;"></td>
         </tr>
       </tfoot>
     </table>

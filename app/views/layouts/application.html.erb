@@ -33,6 +33,8 @@
         this.basePath = this.getBasePath();
         this.loadProductDescriptions();
         this.pendingChanges = false;
+        // Snapshot del formulario al cargar — detecta si el usuario cambió algo
+        this._filterSnapshot = this._getFormSnapshot();
 
         // Cerrar dropdowns al hacer click fuera y ACTUALIZAR si hubo cambios
         document.addEventListener("click", (e) => {
@@ -142,7 +144,8 @@
             url: cb.dataset.url,
             paid: cb.checked,
             invoice_number: cb.dataset.invoiceNumber,
-            commission_amount: cb.dataset.commissionAmount
+            commission_amount: cb.dataset.commissionAmount,
+            vendor_name: cb.dataset.vendor || ''
           }));
 
         if (updates.length === 0) {
@@ -226,6 +229,13 @@
           .then(html => {
             if (this.hasContentTarget) {
               this.contentTarget.innerHTML = html;
+              // Browsers don't auto-execute scripts injected via innerHTML.
+              // Re-insert each script so it runs (fixes historial toggle, infinite scroll, etc.)
+              this.contentTarget.querySelectorAll('script').forEach(old => {
+                const s = document.createElement('script');
+                s.textContent = old.textContent;
+                old.replaceWith(s);
+              });
             }
             if (window.hideLoader) window.hideLoader();
             this.loadProductDescriptions();
@@ -298,19 +308,34 @@
         }
       }
 
+      // Snapshot del formulario para detectar cambios antes de recargar
+      _getFormSnapshot() {
+        const form = document.getElementById('filter-form');
+        if (!form) return '';
+        return [...new FormData(form).entries()]
+          .map(([k, v]) => k + '=' + encodeURIComponent(v))
+          .sort()
+          .join('&');
+      }
+
       filterChanged() {
+        // No hacer nada si el formulario no cambió
+        const current = this._getFormSnapshot();
+        if (current === this._filterSnapshot) {
+          console.log('[filtro] Sin cambios, omitiendo consulta a la API');
+          return;
+        }
+
         if (window.showLoader) window.showLoader();
-        
+
         const form = document.getElementById('filter-form');
         const formData = new FormData(form);
         const params = new URLSearchParams();
-        
+
         params.set("tab", this.currentTab);
-        
+
         // Procesar FormData para manejar múltiples valores y parámetros simples
         for (const [key, value] of formData.entries()) {
-          // Si el valor es 'Todas', podemos optar por no enviarlo para limpiar la URL, 
-          // pero lo mantendremos para coherencia si el usuario lo marcó.
           params.append(key, value);
         }
 

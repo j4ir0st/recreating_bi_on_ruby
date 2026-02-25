@@ -1,5 +1,12 @@
 <!-- Productos Tab: Resumen de Ventas con Comisión por Producto -->
 <div class="table-section">
+<% if @selected_vendors.empty? %>
+  <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:60px 20px; color:var(--text-muted); text-align:center;">
+    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:16px; opacity:0.4;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <h3 style="margin-bottom:8px; font-size:1.1rem;">Sin vendedor seleccionado</h3>
+    <p style="font-size:0.875rem;">Selecciona <strong>Todas</strong> o un vendedor específico en el filtro para ver el detalle de productos.</p>
+  </div>
+<% else %>
   <div class="table-header" style="display: flex; justify-content: space-between; align-items: center;">
     <div>
       <div style="display: flex; align-items: center; gap: 10px;">
@@ -27,7 +34,8 @@
           <th class="text-center" style="width: 55px;">Clase</th>
           <th>Producto</th>
           <th class="text-right" style="width: 135px;">Precio (S/)</th>
-          <th class="text-left" style="width: 200px;">Nombre Cliente</th>
+          <th class="text-left" style="width: 140px;">Vendedor</th>
+          <th class="text-left" style="width: 160px; display:none;">Nombre Cliente</th>
           <th class="text-right" style="width: 135px;">Comisión (S/)</th>
           <th class="text-center" style="width: 100px; display: none;" data-dashboard-target="commissionColumn">
             Pagada<br>
@@ -72,6 +80,9 @@
               S/ <%= number_with_precision(item[:precio_soles].to_f, precision: 2, separator: '.', delimiter: ',') %>
             </td>
             <td class="text-left">
+              <%= item[:vendedor] %>
+            </td>
+            <td class="text-left" style="display:none;">
               <%= item[:nombre_cliente] %>
             </td>
             <td class="text-right" style="white-space: nowrap;">
@@ -105,4 +116,5 @@
       </tfoot>
     </table>
   </div>
+<% end %>
 </div>

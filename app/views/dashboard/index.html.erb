@@ -18,13 +18,23 @@
   <div class="filters-container" style="margin-bottom: 24px;">
     <form id="filter-form">
       <div class="filters-panel" style="display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end;">
-        <div class="filter-group" style="flex: 0 0 125px;">
+        <div class="filter-group" style="flex: 0 0 150px;">
           <label>Año</label>
-          <select name="year" data-dashboard-target="yearSelect" data-action="change->dashboard#filterChanged">
-            <% (@years || []).each do |year| %>
-              <option value="<%= year %>" <%= 'selected' if @selected_year == year %>><%= year %></option>
-            <% end %>
-          </select>
+          <div class="multiselect-container">
+            <div class="multiselect-trigger" data-action="click->dashboard#toggleDropdown">
+              <span><%= @selected_years.length > 1 ? @selected_years.sort.join(', ') : (@selected_years.first || Date.today.year.to_s) %></span>
+              <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+            </div>
+            <div class="multiselect-dropdown">
+              <% (@years || []).each_with_index do |year, i| %>
+                <div class="multiselect-option">
+                  <input type="checkbox" name="year[]" value="<%= year %>" id="year_<%= i %>"
+                         <%= 'checked' if @selected_years.include?(year) %>>
+                  <label for="year_<%= i %>"><%= year %></label>
+                </div>
+              <% end %>
+            </div>
+          </div>
         </div>
           <!-- Filtro Meses (Custom Multiselect) -->
           <div class="filter-group" style="flex: 1; min-width: 150px;">
@@ -60,13 +70,19 @@
             <label>Vendedores</label>
             <div class="multiselect-container">
               <div class="multiselect-trigger" data-action="click->dashboard#toggleDropdown">
-                <span><%= @selected_vendors.empty? || @selected_vendors.include?("Todas") ? "Todas" : (@selected_vendors.length > 2 ? "#{@selected_vendors.length} Vendedores" : @selected_vendors.join(', ')) %></span>
+                <span><%= @selected_vendors.empty? ? '— Sin selección (resumen)' : (@selected_vendors.include?('Todas') ? 'Todas' : (@selected_vendors.length > 2 ? "#{@selected_vendors.length} Vendedores" : @selected_vendors.join(', '))) %></span>
                 <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2"/></svg>
               </div>
               <div class="multiselect-dropdown">
+                <!-- Opción especial: Todas (muestra detalle de todos los vendedores) -->
+                <div class="multiselect-option" style="border-bottom: 1px solid var(--border); margin-bottom: 4px; padding-bottom: 6px;">
+                  <input type="checkbox" name="vendor[]" value="Todas" id="vendor_todas"
+                         <%= 'checked' if @selected_vendors.include?('Todas') %>>
+                  <label for="vendor_todas" style="font-weight: 600; color: var(--accent-cyan);">Todas</label>
+                </div>
                 <% (@vendors || []).each_with_index do |vendor, i| %>
                   <div class="multiselect-option">
-                    <input type="checkbox" name="vendor[]" value="<%= vendor %>" id="vendor_<%= i %>" 
+                    <input type="checkbox" name="vendor[]" value="<%= vendor %>" id="vendor_<%= i %>"
                            <%= 'checked' if @selected_vendors.include?(vendor) %>>
                     <label for="vendor_<%= i %>"><%= vendor %></label>
                   </div>

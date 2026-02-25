@@ -55,7 +55,7 @@ class ApiClient
   # Ahora la API retorna información anidada en 'fd' (Factura Detalle).
   def fetch_details(page: 1, **extra_params)
     # canje=T018,- excluye siempre las facturas de canje de los cálculos
-    params = { format: :json, page: page, page_size: 1000, canje: "T018,-" }.merge(extra_params)
+    params = { format: :json, page: page, page_size: 1000, canje: "T018" }.merge(extra_params)
     
     # Soporte para alias de parámetros comunes (Retrocompatibilidad o claridad)
     params[:fecha_emision__gte] ||= params.delete(:start_date) if params[:start_date]

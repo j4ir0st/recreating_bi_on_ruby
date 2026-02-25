@@ -113,13 +113,16 @@ class DashboardController < ApplicationController
         signed_items = updates.map do |u|
           amount = u["commission_amount"].to_f
           paid   = u["paid"].to_s == "true" || u["paid"] == true
-          { invoice: u["invoice_number"].to_s, amount: paid ? amount : -amount }
+          {
+            invoice:    u["invoice_number"].to_s,
+            amount:     paid ? amount : -amount,
+            vendor:     u["vendor_name"].to_s.strip
+          }
         end
 
-        # "F003-001, F003-002 | 435.00, -160.00"
-        invoices_part = signed_items.map { |i| i[:invoice] }.join(", ")
-        amounts_part  = signed_items.map { |i| format("%g", i[:amount]) }.join(", ")
-        comprobantes_list = "#{invoices_part} | #{amounts_part}"
+        comprobantes_list = signed_items.map { |i| i[:invoice] }.join(", ")
+        comisiones_list   = signed_items.map { |i| format("%g", i[:amount]) }.join(", ")
+        vendedores_list   = signed_items.map { |i| i[:vendor] }.join(", ")
 
         total_comision = signed_items.sum { |i| i[:amount] }.round(2)
 
@@ -128,11 +131,13 @@ class DashboardController < ApplicationController
         full_name = "Usuario" if full_name.blank?
 
         audit_data = {
-          comprobantes: comprobantes_list,
-          cant_fact: success_count,
+          comprobantes:  comprobantes_list,
+          comisiones:    comisiones_list,
+          vendedores:    vendedores_list,
+          cant_fact:     success_count,
           total_comision: total_comision.round(2),
-          fecha_hora: Time.now.iso8601,
-          usuario: full_name
+          fecha_hora:    Time.now.iso8601,
+          usuario:       full_name
         }
         
         Rails.logger.info("=== CREANDO AUDITORÍA: #{audit_data.to_json} ===")
@@ -228,18 +233,22 @@ class DashboardController < ApplicationController
 
   def load_data
     # 0. Inicializar estado básico para evitar Nil en las vistas si algo falla
-    @selected_year = params[:year] || Date.today.year.to_s
+    @selected_year = params[:year] || Date.today.year.to_s  # backward compat single value
+    raw_years = params[:year] || []
+    @selected_years = raw_years.is_a?(Array) ? raw_years.reject(&:blank?) : [raw_years.to_s].reject(&:blank?)
+    @selected_years = [Date.today.year.to_s] if @selected_years.empty?
+    @selected_year = @selected_years.sort.last
     @selected_cancelado = params[:cancelado] || "Todo"
-    
+
     raw_months = params[:date_range] || []
     @selected_months = raw_months.is_a?(Array) ? raw_months : [raw_months].reject(&:blank?)
-    
+
     raw_vendors = params[:vendor] || []
     @selected_vendors = raw_vendors.is_a?(Array) ? raw_vendors : [raw_vendors].reject(&:blank?)
 
-    @years = ["2025", "2026"]
-    # @dates ahora almacena el valor YYYY-MM para el formulario, pero se muestra con formato 'YYYY mes 24->23'
-    @dates = (1..12).map { |m| "#{@selected_year}-#{m.to_s.rjust(2, '0')}" }
+    @years = ([Date.today.year, 2025].max).downto(2025).map(&:to_s).reverse
+    # @dates: genera YYYY-MM para todos los años seleccionados
+    @dates = @selected_years.flat_map { |y| (1..12).map { |m| "#{y}-#{m.to_s.rjust(2, '0')}" } }.sort
     @vendors = []
     @details = []
     @commissions = []
@@ -256,8 +265,9 @@ class DashboardController < ApplicationController
 
       if @active_tab == "historial"
         @audit_history = client.get_audit_history(page: 1)
-        # Para historial no cargamos comisiones (evitar crash). Vendedores quedan vacíos
-        @vendors = []
+        # Carga la lista de vendedores desde caché (no llama a la API si ya está cacheado)
+        @commissions = Rails.cache.fetch("repr_comisiones", expires_in: 7.days) { client.fetch_commissions }
+        @vendors = (@commissions || []).map { |c| c[:nombre].to_s.strip }.compact.uniq.reject { |v| v.upcase == "OFICINA" }.sort
         return true
       end
 
@@ -265,9 +275,11 @@ class DashboardController < ApplicationController
       end_date = nil
 
       if @selected_months.empty? || @selected_months.include?("Todas")
-        # Sin filtro de mes: traer todo el año (del 24/dic del año anterior al 23/dic del año actual)
-        start_date = Date.new(@selected_year.to_i - 1, 12, 24)
-        end_date = Date.new(@selected_year.to_i, 12, 23)
+        # Sin filtro de mes: rango completo de todos los años seleccionados
+        min_year = @selected_years.map(&:to_i).min
+        max_year = @selected_years.map(&:to_i).max
+        start_date = Date.new(min_year - 1, 12, 24)
+        end_date   = Date.new(max_year, 12, 23)
       else
         # Lógica 24->23: el rango de facturas va del 24 del mes anterior al 23 del mes seleccionado
         parsed_months = @selected_months.map { |m| Date.strptime(m, "%Y-%m") rescue nil }.compact.sort
@@ -280,19 +292,21 @@ class DashboardController < ApplicationController
           # Fin: día 23 del último mes seleccionado
           end_date = Date.new(last_month.year, last_month.month, 23)
         else
-          start_date = Date.new(@selected_year.to_i - 1, 12, 24)
-          end_date = Date.new(@selected_year.to_i, 12, 23)
+          min_year = @selected_years.map(&:to_i).min
+          max_year = @selected_years.map(&:to_i).max
+          start_date = Date.new(min_year - 1, 12, 24)
+          end_date   = Date.new(max_year, 12, 23)
         end
       end
 
       start_date_str = start_date.strftime("%Y-%m-%d")
       end_date_str = end_date.strftime("%Y-%m-%d 23:59:59")
 
-      # 1. Obtener Datos Maestros
-      @commissions = Rails.cache.fetch("repr_comisiones", expires_in: 12.hours) do
+      # Tabla maestra de comisiones (datos que rara vez cambian — cache 7 días)
+      @commissions = Rails.cache.fetch("repr_comisiones", expires_in: 7.days) do
         client.fetch_commissions
       end
-      @product_commissions = Rails.cache.fetch("repr_comisiones_prod", expires_in: 12.hours) do
+      @product_commissions = Rails.cache.fetch("repr_comisiones_prod", expires_in: 7.days) do
         client.fetch_product_commissions
       end
 
@@ -314,9 +328,14 @@ class DashboardController < ApplicationController
         api_params[:fd__comision_pagada] = (params[:comision_pagada] == "S")
       end
 
-      # Filtro de vendedores en el servidor (evita cargar los ~1600 registros completos)
+      # Filtro de vendedores: sólo cuando hay vendedores específicos (NO cuando es "Todas" ni cuando está vacío)
       if @selected_vendors.any? && !@selected_vendors.include?("Todas")
         api_params[:vendedor__in] = @selected_vendors.map { |v| v.to_s.strip }.join(",")
+      end
+
+      # Pestaña productos sin vendedor → no hay nada que mostrar, evitar llamada a la API
+      if @active_tab == "productos" && @selected_vendors.empty?
+        return true
       end
 
       api_data = client.fetch_details_pages(**api_params)
@@ -370,6 +389,13 @@ class DashboardController < ApplicationController
       
       @vendor_details = flatten_nested_data(@details, :vendor)
       @product_details = flatten_nested_data(@details, :product)
+      # Orden por defecto en Productos: Clase A primero, luego B, luego C; dentro de cada clase por fecha desc
+      clase_order = { 'A' => 0, 'B' => 1, 'C' => 2 }
+      @product_details = @product_details.sort_by do |item|
+        cls  = clase_order.fetch(item[:clase].to_s.strip.upcase, 9)
+        date = (Date.parse(item[:fecha_emision].to_s) rescue Date.new(2000))
+        [cls, -date.to_time.to_i]
+      end
 
       # Listas para filtros (Excluir OFICINA)
       if @commissions.present?

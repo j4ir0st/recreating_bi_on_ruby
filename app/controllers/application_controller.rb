@@ -6,7 +6,11 @@ class ApplicationController < ActionController::Base
 
   def authenticate_user!
     unless session[:api_token]
-      redirect_to login_path
+      if request.xhr?
+        render json: { error: "Sesión expirada" }, status: :unauthorized
+      else
+        redirect_to login_path
+      end
     end
   end
 end

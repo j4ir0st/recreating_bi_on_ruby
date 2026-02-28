@@ -7,6 +7,17 @@
     <p style="font-size:0.875rem;">Selecciona <strong>Todas</strong> o un vendedor específico en el filtro para ver el detalle de productos.</p>
   </div>
 <% else %>
+  <%
+    # Pre-calcular totales para tooltips
+    items = (details || [])
+    clase_totals = items.group_by { |i| i[:clase] }.transform_values do |grouped_items|
+      grouped_items.sum { |i| i[:comision_soles].to_f }
+    end
+    # También calculamos tipo_cliente para esta pestaña por consistencia
+    tipo_cliente_totals = items.group_by { |i| i[:tipo_cliente] }.transform_values do |grouped_items|
+      grouped_items.sum { |i| i[:comision_soles].to_f }
+    end
+  %>
   <div class="table-header" style="display: flex; justify-content: space-between; align-items: center;">
     <div>
       <div style="display: flex; align-items: center; gap: 10px;">
@@ -37,16 +48,23 @@
           <th class="text-left" style="width: 140px;">Vendedor</th>
           <th class="text-left" style="width: 160px; display:none;">Nombre Cliente</th>
           <th class="text-right" style="width: 135px;">Comisión (S/)</th>
-          <th class="text-center" style="width: 100px; display: none;" data-dashboard-target="commissionColumn">
-            Pagada<br>
-            <input type="checkbox" data-action="change->dashboard#toggleSelectAll" data-dashboard-target="selectAllCheckbox">
+          <th class="text-right" style="width: 110px; display: none; padding-right: 16px;" data-dashboard-target="commissionColumn">
+            <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+              <span style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase;">Pagada</span>
+              <input type="checkbox" data-action="change->dashboard#toggleSelectAll" data-dashboard-target="selectAllCheckbox">
+            </div>
           </th>
         </tr>
       </thead>
       <tbody>
         <% (details || []).each do |item| %>
           <tr>
-            <td><span title="<%= item[:tipo_cliente] %>"><%= item[:tipo_cliente] %></span></td>
+            <% 
+              tipo = item[:tipo_cliente].to_s
+              total_tipo = tipo_cliente_totals[tipo] || 0
+              tooltip_tipo = "TIPO CLIENTE: #{tipo} | Total = S/. #{number_with_precision(total_tipo, precision: 2, separator: '.', delimiter: ',')}"
+            %>
+            <td title="<%= tooltip_tipo %>"><span><%= tipo %></span></td>
             <td><%= item[:fecha_emision] %></td>
             <td><%= item[:numero_factura] %></td>
             <td class="text-center">
@@ -63,20 +81,25 @@
                 <span class="status-badge status-pending" title="No Pagada">NO</span>
               <% end %>
             </td>
-            <td class="text-center">
-              <% if item[:clase].present? %>
-                <span class="status-badge clase-<%= item[:clase].downcase %>"><%= item[:clase] %></span>
-              <% else %>
-                -
-              <% end %>
-            </td>
+              <% 
+                clase = item[:clase].to_s.upcase
+                total_clase = clase_totals[item[:clase]] || 0
+                tooltip_clase = "CLASE #{clase}: Total = S/. #{number_with_precision(total_clase, precision: 2, separator: '.', delimiter: ',')}"
+              %>
+              <td class="text-center" title="<%= tooltip_clase %>">
+                <% if item[:clase].present? %>
+                  <span class="status-badge clase-<%= item[:clase].downcase %>"><%= item[:clase] %></span>
+                <% else %>
+                  -
+                <% end %>
+              </td>
             <td data-product-code="<%= item[:producto_codigo] %>"
                 style="min-width: 200px; max-width: 260px; white-space: normal; word-break: break-word; vertical-align: top;">
               <span class="product-name" title="<%= item[:producto_codigo] %>" style="display:block;">
                 <%= item[:producto_codigo] %>
               </span>
             </td>
-            <td class="text-right" style="white-space: nowrap; font-weight: 600;">
+            <td class="text-right" style="white-space: nowrap; font-weight: 600; font-variant-numeric: tabular-nums;">
               S/ <%= number_with_precision(item[:precio_soles].to_f, precision: 2, separator: '.', delimiter: ',') %>
             </td>
             <td class="text-left">
@@ -85,18 +108,24 @@
             <td class="text-left" style="display:none;">
               <%= item[:nombre_cliente] %>
             </td>
-            <td class="text-right" style="white-space: nowrap;">
+            <td class="text-right" style="white-space: nowrap; font-variant-numeric: tabular-nums;">
               <strong style="color: var(--accent-cyan);">S/ <%= number_with_precision(item[:comision_soles].to_f, precision: 2, separator: '.', delimiter: ',') %></strong>
             </td>
-            <td class="text-center" style="display: none;" data-dashboard-target="commissionColumn">
+            <td class="text-center" 
+                style="display: none; vertical-align: middle; <%= 'background: rgba(0,0,0,0.2);' if item[:cancelado] != 'S' %>" 
+                data-dashboard-target="commissionColumn">
               <input type="checkbox" 
                      class="commission-checkbox" 
                      data-dashboard-target="itemCheckbox"
                      data-url="<%= item[:invoice_url] %>" 
                      data-invoice-number="<%= item[:numero_factura] %>"
                      data-commission-amount="<%= item[:comision_soles] %>"
+                     data-vendor="<%= item[:vendedor] %>"
                      data-action="change->dashboard#onItemCheckboxChange"
-                     <%= 'checked' if item[:comision_pagada] %>>
+                     <%= 'checked' if item[:comision_pagada] %>
+                     <%= 'disabled' if item[:cancelado] != 'S' %>
+                     style="<%= 'opacity: 0.4; cursor: not-allowed;' if item[:cancelado] != 'S' %>"
+                     title="<%= 'Solo se puede pagar si la factura está cancelada (CAN=S)' if item[:cancelado] != 'S' %>">
             </td>
           </tr>
         <% end %>

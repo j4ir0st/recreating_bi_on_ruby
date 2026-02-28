@@ -8,11 +8,13 @@
   <%= csp_meta_tag %>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
+    *, *::before, *::after { box-sizing: border-box; }
     :root {
       --bg-primary: #0f1323;
       --bg-card: #1e2642;
       --text-primary: #e2e8f0;
       --text-secondary: #a0aec0;
+      --text-muted: #718096;
       --accent-blue: #00d4ff;
       --border-color: #2d3748;
     }
@@ -25,6 +27,7 @@
       align-items: center;
       min-height: 100vh;
       margin: 0;
+      padding: 20px;
     }
     .auth-card {
       background: var(--bg-card);
@@ -33,12 +36,13 @@
       padding: 40px;
       width: 100%;
       max-width: 400px;
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+      overflow: hidden;
     }
     .auth-header { text-align: center; margin-bottom: 32px; }
-    .auth-header h1 { font-size: 1.5rem; color: var(--text-primary); margin-bottom: 8px; }
+    .auth-header h1 { font-size: 1.5rem; color: var(--text-primary); margin-bottom: 8px; font-weight: 700; }
     .auth-header p { color: var(--text-secondary); font-size: 0.875rem; }
-    .form-group { margin-bottom: 20px; }
+    .form-group { margin-bottom: 20px; width: 100%; }
     .form-group label { display: block; font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 8px; }
     .form-control {
       width: 100%;
@@ -49,31 +53,88 @@
       color: var(--text-primary);
       font-size: 0.95rem;
       outline: none;
-      transition: border-color 0.2s;
+      transition: all 0.2s;
+      display: block;
     }
-    .form-control:focus { border-color: var(--accent-blue); }
+    .form-control:focus { border-color: var(--accent-blue); box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.1); }
+    
     .btn-primary {
       width: 100%;
       padding: 12px;
       background: var(--accent-blue);
       color: #000;
-      font-weight: 600;
+      font-weight: 700;
       border: none;
       border-radius: 6px;
       cursor: pointer;
-      transition: opacity 0.2s;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
     }
-    .btn-primary:hover { opacity: 0.9; }
+    .btn-primary:hover { 
+      background: #33e1ff; 
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0, 212, 255, 0.3);
+    }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-primary:disabled { 
+      background: #4a5568 !important; 
+      color: #a0aec0 !important;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .btn-loader {
+      width: 18px; height: 18px;
+      border: 2px solid rgba(0, 0, 0, 0.2);
+      border-radius: 50%;
+      border-top-color: #000;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
     .alert {
-      padding: 12px;
-      border-radius: 6px;
-      font-size: 0.875rem;
-      margin-bottom: 20px;
-      text-align: center;
+      padding: 12px; border-radius: 6px; font-size: 0.875rem;
+      margin-bottom: 20px; text-align: center;
     }
     .alert-danger { background: rgba(255, 107, 53, 0.15); color: #ff6b35; border: 1px solid rgba(255, 107, 53, 0.3); }
     .alert-success { background: rgba(72, 187, 120, 0.15); color: #48bb78; border: 1px solid rgba(72, 187, 120, 0.3); }
   </style>
+
+  <script type="module">
+    import { Application, Controller } from "https://cdn.skypack.dev/@hotwired/stimulus@3.2.2";
+    const application = Application.start();
+
+    // Visibilidad de contraseña
+    application.register("password-visibility", class extends Controller {
+      static targets = ["input", "icon"]
+      toggle() {
+        const isPassword = this.inputTarget.type === "password";
+        this.inputTarget.type = isPassword ? "text" : "password";
+        if (isPassword) {
+          // Icono Ojo Tachado (Eye Off) - Path más limpio
+          this.iconTarget.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 2.18-3.03M8.34 8.34a4 4 0 1 1 5.66 5.66"></path><line x1="1" y1="1" x2="23" y2="23" stroke-width="2.5"></line></svg>`;
+        } else {
+          // Icono Ojo (Eye)
+          this.iconTarget.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+        }
+      }
+    });
+
+    // Bloqueo de botón login
+    application.register("login", class extends Controller {
+      static targets = ["button", "text", "loader"]
+      submit(e) {
+        this.buttonTarget.disabled = true;
+        this.textTarget.innerText = "Verificando...";
+        this.loaderTarget.style.display = "block";
+      }
+    });
+  </script>
 </head>
 <body>
   <%= yield %>

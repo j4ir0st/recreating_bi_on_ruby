@@ -25,7 +25,8 @@
     // Controlador Stimulus del Dashboard
     application.register("dashboard", class extends Controller {
       static targets = ["content", "vendorSelect", "dateSelect", "yearSelect", "canceladoSelect", 
-                        "editIcon", "commissionColumn", "selectAllCheckbox", "itemCheckbox"]
+                        "editIcon", "commissionColumn", "selectAllCheckbox", "itemCheckbox",
+                        "vendorTrigger", "comisionPagadaSelect"]
 
       connect() {
         // Recuperar la pestaña activa actual
@@ -96,11 +97,18 @@
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
             'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content
           },
           body: JSON.stringify({ url: url, paid: paid })
         })
-        .then(r => r.json().then(data => ({ status: r.status, ok: r.ok, data })))
+        .then(r => {
+          if (r.status === 401) {
+            window.location.reload();
+            return;
+          }
+          return r.json().then(data => ({ status: r.status, ok: r.ok, data }));
+        })
         .then(({ ok, data }) => {
           if (ok && data.success) {
             this.showToast("Estado de comisión actualizado", "success");
@@ -120,15 +128,35 @@
           checkbox.style.opacity = '1';
         });
       }
- 
-      toggleSelectAll(e) {
-        const checked = e.target.checked;
-        this.itemCheckboxTargets.forEach(cb => {
-          cb.checked = checked;
-        });
-        this.pendingChanges = true;
-      }
+        // Seleccionar/Deseleccionar todos en la TABLA actual
+        toggleSelectAll(e) {
+          const checked = e.target.checked;
+          const table = e.target.closest('table');
+          if (!table) return;
+          
+          const checkboxes = table.querySelectorAll('.commission-checkbox:not([disabled])');
+          checkboxes.forEach(cb => {
+            if (cb.checked !== checked) {
+              cb.checked = checked;
+              cb.dispatchEvent(new Event('change'));
+            }
+          });
+        }
 
+        // Seleccionar/Deseleccionar solo los de un contenedor específico (una fila de supervisor)
+        toggleRowSelectAll(e) {
+          const checked = e.target.checked;
+          const container = e.target.closest('td');
+          if (!container) return;
+          
+          const checkboxes = container.querySelectorAll('.commission-checkbox:not([disabled])');
+          checkboxes.forEach(cb => {
+            if (cb.checked !== checked) {
+              cb.checked = checked;
+              cb.dispatchEvent(new Event('change'));
+            }
+          });
+        }
       onItemCheckboxChange() {
         this.pendingChanges = true;
       }
@@ -155,15 +183,25 @@
 
         if (window.showLoader) window.showLoader();
 
+        const tipoMap = { vendedor: 'Vendedor', productos: 'Producto', supervisor: 'Supervisor' };
+        const tipo_comision = tipoMap[this.currentTab] || 'Vendedor';
+
         fetch(`${this.basePath}mass_update_commissions`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
             'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content
           },
-          body: JSON.stringify({ updates: updates })
+          body: JSON.stringify({ updates: updates, tipo_comision: tipo_comision })
         })
-        .then(r => r.json())
+        .then(r => {
+          if (r.status === 401) {
+            window.location.reload();
+            return;
+          }
+          return r.json();
+        })
         .then(data => {
           if (data.success) {
             this.showToast(data.message, "success");
@@ -192,6 +230,63 @@
         return '/';
       }
 
+      // Snapshot del formulario para detectar cambios antes de recargar
+      _getFormSnapshot() {
+        const form = document.getElementById('filter-form');
+        if (!form) return '';
+        const params = new URLSearchParams(new FormData(form));
+        params.sort();
+        return params.toString();
+      }
+
+      filterChanged() {
+        const current = this._getFormSnapshot();
+        if (current === this._filterSnapshot) {
+          console.log('[filtro] Sin cambios, omitiendo consulta a la API');
+          return;
+        }
+
+        if (this.currentTab === 'supervisor') {
+          const currentParams = new URLSearchParams(current);
+          const oldParams = new URLSearchParams(this._filterSnapshot);
+          
+          // Comprobar si algo que NO sea vendor[] ha cambiado
+          let otherChanged = false;
+          // Unificamos todas las llaves para comparar
+          const allKeys = new Set([...currentParams.keys(), ...oldParams.keys()]);
+          
+          for (let key of allKeys) {
+            // Ignorar tanto "vendor[]" como la variante codificada "vendor%5B%5D"
+            if (key.includes('vendor')) continue;
+            
+            if (currentParams.get(key) !== oldParams.get(key)) {
+              otherChanged = true;
+              break;
+            }
+          }
+          
+          if (!otherChanged) {
+            console.log('[filtro] Solo se cambió el filtro de vendedores en Supervisor. No se requiere recarga.');
+            this._filterSnapshot = current;
+            return;
+          }
+        }
+
+        if (window.showLoader) window.showLoader();
+
+        const form = document.getElementById('filter-form');
+        const formData = new FormData(form);
+        const params = new URLSearchParams();
+
+        params.set("tab", this.currentTab);
+
+        for (const [key, value] of formData.entries()) {
+          params.append(key, value);
+        }
+
+        window.location.href = `${window.location.pathname}?${params.toString()}`;
+      }
+
       switchTab(e) {
         const tab = e.currentTarget.dataset.tab;
         if (!tab) return;
@@ -202,10 +297,32 @@
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
         e.currentTarget.classList.add('active');
 
+        const form = document.getElementById('filter-form');
+        
+        // --- LÓGICA DE EXCEPCIONES AL CAMBIAR DE PESTAÑA ---
+        
+        // 1. Excepción Historial: Filtro vendedores siempre vacío
+        if (tab === 'historial') {
+          console.log('[filtro] Aplicando excepción Historial: vaciando vendedores');
+          form.querySelectorAll('input[name="vendor[]"]').forEach(cb => cb.checked = false);
+          if (this.hasVendorTriggerTarget) {
+            this.vendorTriggerTarget.querySelector('span').innerText = '— Sin selección (resumen)';
+          }
+        }
+        
+        // 2. Excepción Supervisor: Pago Comisión por defecto Pendiente (N)
+        if (tab === 'supervisor') {
+          console.log('[filtro] Aplicando excepción Supervisor: seteando a Pendiente');
+          if (this.hasComisionPagadaSelectTarget) {
+            this.comisionPagadaSelectTarget.value = 'N';
+          }
+        }
+
         if (window.showLoader) window.showLoader();
 
-        const form = document.getElementById('filter-form');
-        const params = new URLSearchParams(new FormData(form));
+        // Capturar los datos del formulario DESPUÉS de aplicar las excepciones
+        const formData = new FormData(form);
+        const params = new URLSearchParams(formData);
         params.set('tab', tab);
 
         // Usar ruta absoluta dinámica para respetar el subpath (/app_comisiones/)
@@ -213,6 +330,10 @@
           headers: { "X-Requested-With": "XMLHttpRequest" }
         })
           .then(r => {
+            if (r.status === 401) {
+              window.location.reload(); // Forzar recarga si la sesión expiró
+              return;
+            }
             if (!r.ok) {
               // Leer el cuerpo del error para mostrar el mensaje real
               return r.text().then(body => {
@@ -237,6 +358,8 @@
                 old.replaceWith(s);
               });
             }
+            // Actualizar el snapshot después de cargar la nueva pestaña con sus filtros actuales
+            this._filterSnapshot = this._getFormSnapshot();
             if (window.hideLoader) window.hideLoader();
             this.loadProductDescriptions();
           })
@@ -308,39 +431,7 @@
         }
       }
 
-      // Snapshot del formulario para detectar cambios antes de recargar
-      _getFormSnapshot() {
-        const form = document.getElementById('filter-form');
-        if (!form) return '';
-        return [...new FormData(form).entries()]
-          .map(([k, v]) => k + '=' + encodeURIComponent(v))
-          .sort()
-          .join('&');
-      }
 
-      filterChanged() {
-        // No hacer nada si el formulario no cambió
-        const current = this._getFormSnapshot();
-        if (current === this._filterSnapshot) {
-          console.log('[filtro] Sin cambios, omitiendo consulta a la API');
-          return;
-        }
-
-        if (window.showLoader) window.showLoader();
-
-        const form = document.getElementById('filter-form');
-        const formData = new FormData(form);
-        const params = new URLSearchParams();
-
-        params.set("tab", this.currentTab);
-
-        // Procesar FormData para manejar múltiples valores y parámetros simples
-        for (const [key, value] of formData.entries()) {
-          params.append(key, value);
-        }
-
-        window.location.href = `${window.location.pathname}?${params.toString()}`;
-      }
 
       // Carga asíncrona y progresiva de descripciones de productos
       loadProductDescriptions() {
@@ -583,6 +674,39 @@
         });
       }
     });
+
+    // Controlador para visibilidad de contraseña
+    application.register("password-visibility", class extends Controller {
+      static targets = ["input", "icon"]
+
+      toggle() {
+        const isPassword = this.inputTarget.type === "password";
+        this.inputTarget.type = isPassword ? "text" : "password";
+        
+        // Cambiar icono: ojito normal vs ojito tachado
+        if (isPassword) {
+          // Icono Ojo Tachado (Eye Off) - Path más limpio
+          this.iconTarget.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 2.18-3.03M8.34 8.34a4 4 0 1 1 5.66 5.66"></path><line x1="1" y1="1" x2="23" y2="23" stroke-width="2.5"></line></svg>`;
+        } else {
+          this.iconTarget.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+        }
+      }
+    });
+
+    // Controlador para bloqueo de botón login
+    application.register("login", class extends Controller {
+      static targets = ["button", "text", "loader"]
+
+      connect() {
+        this.element.addEventListener("submit", () => {
+          this.buttonTarget.disabled = true;
+          this.buttonTarget.style.opacity = "0.7";
+          this.buttonTarget.style.cursor = "not-allowed";
+          this.textTarget.innerText = "Verificando...";
+          this.loaderTarget.style.display = "block";
+        });
+      }
+    });
   </script>
 
   <style>
@@ -651,7 +775,11 @@
     .tabs {
       display:flex; gap:4px; margin-bottom:24px; background:var(--bg-secondary);
       border-radius:var(--radius-md); padding:4px; width:fit-content;
+      max-width: 100%; overflow-x: auto; white-space: nowrap;
+      scrollbar-width: none; /* Firefox */
+      -ms-overflow-style: none; /* IE 10+ */
     }
+    .tabs::-webkit-scrollbar { display: none; } /* Chrome, Safari, Opera */
     .btn-excel {
       background: rgba(72,187,120,0.1); color: var(--accent-green);
       border: 1px solid rgba(72,187,120,0.3); border-radius: var(--radius-md);
@@ -667,6 +795,7 @@
       padding:8px 24px; border:none; border-radius:6px; background:transparent;
       color:var(--text-secondary); font-family:'Inter',sans-serif; font-size:0.9rem;
       font-weight:500; cursor:pointer; transition:var(--transition);
+      flex-shrink: 0; /* No encoger botones en móvil */
     }
     .tab-btn:hover { color:var(--text-primary); background:rgba(255,255,255,0.05); }
     .tab-btn.active {
@@ -722,15 +851,22 @@
       text-transform:uppercase; letter-spacing:0.5px; position:sticky; top:0; z-index:10;
       border-bottom:2px solid var(--border-color);
     }
+    .data-table td {
+      padding: 10px 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      font-size: 0.85rem;
+      color: var(--text-primary);
+      font-variant-numeric: tabular-nums;
+    }
     .data-table tbody tr {
       border-bottom:1px solid rgba(255,255,255,0.03); transition:var(--transition);
     }
     .data-table tbody tr:nth-child(even) { background:rgba(255,255,255,0.02); }
     .data-table tbody tr:hover { background:rgba(0,212,255,0.05); }
-    .data-table tbody td { padding:10px 16px; font-size:0.85rem; color:var(--text-primary); }
     .data-table tfoot td {
       background:var(--bg-table-header); padding:12px 16px; font-size:0.85rem;
       font-weight:700; color:var(--text-primary); border-top:2px solid var(--accent-blue);
+      font-variant-numeric: tabular-nums;
       position:sticky; bottom:0;
     }
 
@@ -748,6 +884,19 @@
     .status-badge {
       display:inline-block; padding:3px 10px; border-radius:12px;
       font-size:0.7rem; font-weight:600; letter-spacing:0.3px;
+    }
+
+    input[type="checkbox"] {
+      cursor: pointer;
+      width: 1.15rem;
+      height: 1.15rem;
+      accent-color: var(--accent-cyan);
+      vertical-align: middle;
+    }
+
+    .commission-checkbox:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
     }
     .status-paid { background:rgba(72,187,120,0.15); color:#48bb78; border:1px solid rgba(72,187,120,0.3); }
     .status-pending { background:rgba(255,107,53,0.12); color:#ff6b35; border:1px solid rgba(255,107,53,0.3); }
@@ -787,6 +936,14 @@
 
     @keyframes spin { to { transform: rotate(360deg); } }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+    .btn-loader {
+      width: 18px; height: 18px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: #fff;
+      animation: spin 0.8s linear infinite;
+    }
 
     .loading-dots {
       color: var(--accent-orange);
@@ -882,6 +1039,20 @@
 
     .commission-checkbox {
       width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-orange);
+    }
+
+    /* Mejoras de área de toque para móvil */
+    @media (max-width: 768px) {
+      .btn-icon, .btn-excel, .tab-btn {
+        min-height: 44px; /* Estándar de touch targets */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .btn-icon svg { width: 22px; height: 22px; }
+      .data-table thead th, .data-table tbody td {
+        padding: 12px 10px; /* Más espacio para dedos */
+      }
     }
   </style>
 </head>

@@ -37,7 +37,7 @@
           </div>
         </div>
           <!-- Filtro Meses (Custom Multiselect) -->
-          <div class="filter-group" style="flex: 1; min-width: 150px;">
+          <div class="filter-group" style="flex: 1; min-width: 180px;">
             <label>Meses</label>
             <div class="multiselect-container">
               <%
@@ -69,7 +69,7 @@
           <div class="filter-group" style="flex: 3; min-width: 350px;">
             <label>Vendedores</label>
             <div class="multiselect-container">
-              <div class="multiselect-trigger" data-action="click->dashboard#toggleDropdown">
+              <div class="multiselect-trigger" data-action="click->dashboard#toggleDropdown" data-dashboard-target="vendorTrigger">
                 <span><%= @selected_vendors.empty? ? '— Sin selección (resumen)' : (@selected_vendors.include?('Todas') ? 'Todas' : (@selected_vendors.length > 2 ? "#{@selected_vendors.length} Vendedores" : @selected_vendors.join(', '))) %></span>
                 <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2"/></svg>
               </div>
@@ -91,22 +91,23 @@
             </div>
           </div>
 
-          <!-- Filtro Comisión Pagada -->
-          <div class="filter-group" style="flex: 1; min-width: 140px;">
-            <label>Pago Comisión</label>
-            <select name="comision_pagada" data-dashboard-target="comisionPagadaSelect" data-action="change->dashboard#filterChanged">
-              <option value="Todo" <%= 'selected' if params[:comision_pagada] == 'Todo' || params[:comision_pagada].blank? %>>Todo</option>
-              <option value="S" <%= 'selected' if params[:comision_pagada] == 'S' %>>Pagada</option>
-              <option value="N" <%= 'selected' if params[:comision_pagada] == 'N' %>>Pendiente</option>
-            </select>
-          </div>
-
-          <div class="filter-group" style="flex: 1; min-width: 140px;">
+          <div class="filter-group" style="flex: 1; min-width: 120px;">
             <label>Cancelado</label>
             <select name="cancelado" data-dashboard-target="canceladoSelect" data-action="change->dashboard#filterChanged">
               <option value="Todo" <%= 'selected' if @selected_cancelado == 'Todo' %>>Todo</option>
               <option value="S" <%= 'selected' if @selected_cancelado == 'S' %>>S</option>
               <option value="N" <%= 'selected' if @selected_cancelado == 'N' %>>N</option>
+            </select>
+          </div>
+
+          <!-- Filtro Comisión Pagada -->
+          <div class="filter-group" style="flex: 1; min-width: 120px;">
+            <label>Pago Comisión</label>
+            <% current_pagada = params[:comision_pagada].presence || (@active_tab == "supervisor" ? "N" : "Todo") %>
+            <select name="comision_pagada" data-dashboard-target="comisionPagadaSelect" data-action="change->dashboard#filterChanged">
+              <option value="Todo" <%= 'selected' if current_pagada == 'Todo' %>>Todo</option>
+              <option value="S" <%= 'selected' if current_pagada == 'S' %>>Pagada</option>
+              <option value="N" <%= 'selected' if current_pagada == 'N' %>>Pendiente</option>
             </select>
           </div>
         </div>
@@ -115,13 +116,16 @@
 
   <!-- Tabs + Filtros de Historial en la misma fila -->
   <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px;">
-    <div class="tabs" style="flex: 0 0 auto;">
+    <div class="tabs" style="flex: 0 0 auto; overflow-x: auto; white-space: nowrap; max-width: 100%;">
       <button class="tab-btn <%= 'active' if @active_tab == 'vendedor' %>"
               data-tab="vendedor"
               data-action="click->dashboard#switchTab">Vendedor</button>
       <button class="tab-btn <%= 'active' if @active_tab == 'productos' %>"
               data-tab="productos"
               data-action="click->dashboard#switchTab">Productos</button>
+      <button class="tab-btn <%= 'active' if @active_tab == 'supervisor' %>"
+              data-tab="supervisor"
+              data-action="click->dashboard#switchTab">Supervisor</button>
       <button class="tab-btn <%= 'active' if @active_tab == 'reporte' %>"
               data-tab="reporte"
               data-action="click->dashboard#switchTab">Reportes</button>
@@ -200,6 +204,8 @@
         usuario_filter: params[:usuario_filter].to_s,
         comprobantes_filter: params[:comprobantes_filter].to_s
       } %>
+    <% elsif @active_tab == "supervisor" %>
+      <%= render partial: "dashboard/tabs/supervisor", locals: { supervisor_rows: @supervisor_rows || [] } %>
     <% end %>
   </div>
 </div>

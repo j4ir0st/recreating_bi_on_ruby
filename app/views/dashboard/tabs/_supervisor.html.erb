@@ -1,0 +1,151 @@
+<!-- Supervisor Tab: Comisiones de Supervisores cruzado con Vendedores -->
+<div class="table-section">
+  <div class="table-header" style="display: flex; justify-content: space-between; align-items: center;">
+    <div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <h3>Comisiones de Supervisores</h3>
+        <button data-action="click->dashboard#toggleCommissionEdit" class="btn-icon" title="Editar Comisiones" data-dashboard-target="editIcon" style="background: none; border: none; color: var(--accent-cyan); cursor: pointer; display: flex; align-items: center; padding: 5px;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-edit"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </button>
+      </div>
+      <p>Pendientes por cobrar (comisión pagada = No, cancelado = S)</p>
+    </div>
+    <button data-action="click->dashboard#exportToExcel" class="btn-excel" title="Descargar Excel">
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="8" y1="13" x2="16" y2="13"/>
+        <line x1="8" y1="17" x2="16" y2="17"/>
+        <line x1="10" y1="9" x2="8" y2="9"/>
+      </svg>
+      Exportar Excel
+    </button>
+  </div>
+
+  <% rows = supervisor_rows || [] %>
+  <% if rows.empty? %>
+    <div style="display:flex; flex-direction:column; align-items:center; justify-content:center;
+                padding:60px 20px; color:var(--text-muted); text-align:center;">
+      <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24"
+           fill="none" stroke="currentColor" stroke-width="1.5"
+           style="margin-bottom:16px; opacity:0.4;">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <h3 style="margin-bottom:8px; font-size:1.1rem;">Sin datos de supervisores</h3>
+      <p style="font-size:0.875rem;">No se encontraron registros en la tabla de Supervisores.</p>
+    </div>
+  <% else %>
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th style="width:180px;">Supervisor</th>
+            <th class="text-right" style="width:110px;">Comisión (%)</th>
+            <th>Vendedor</th>
+            <th class="text-right" style="width:170px;">Comisión Vendedor (S/)</th>
+            <th class="text-right" style="width:170px;">Comisión Supervisor (S/)</th>
+            <th class="text-right" style="width: 250px; display: none; padding-right: 16px;" data-dashboard-target="commissionColumn">
+              <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                <span style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase;">Pagada</span>
+                <input type="checkbox" data-action="change->dashboard#toggleSelectAll" data-dashboard-target="selectAllCheckbox" style="margin-right: 4px;">
+              </div>
+              <div style="font-size: 0.76rem; color: var(--text-muted); font-weight: 400; margin-top: 4px; text-transform: none; letter-spacing: 0;">
+                (FACTURA -> PRODUCTO)
+              </div>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <% rows.each do |row| %>
+            <%
+              comision_pct   = row[:comision_pct].to_f
+              vendor_data    = row[:vendor_data]   || []
+              total_vendedores = vendor_data.sum { |v| v[:total_vendedor].to_f }
+              total_supervisor = row[:total_supervisor].to_f
+            %>
+            <tr>
+              <td style="font-weight:600; color:var(--accent-cyan); vertical-align:top;">
+                <%= row[:supervisor] %>
+              </td>
+              <td class="text-right" style="vertical-align:top; font-variant-numeric: tabular-nums;">
+                <%= number_with_precision(comision_pct * 100, precision: 2, separator: '.') %>%
+              </td>
+              <!-- Columna Vendedor: Nombres (Refactorizado con DIVs para alineación) -->
+              <td style="vertical-align:top; font-size:0.875rem;">
+                <% vendor_data.each do |v| %>
+                  <div style="margin-bottom: 4px; height: 1.25rem; display: flex; align-items: center;"><%= v[:nombre] %></div>
+                <% end %>
+                <div style="margin-top: 8px; font-weight: 700; color: var(--accent-cyan); height: 1.25rem; display: flex; align-items: center;">TOTAL</div>
+              </td>
+              <!-- Columna Comisión Vendedor -->
+              <td class="text-right" style="vertical-align:top; font-size:0.875rem; font-variant-numeric: tabular-nums;">
+                <% vendor_data.each do |v| %>
+                  <div style="margin-bottom: 4px; height: 1.25rem; display: flex; align-items: center; justify-content: flex-end; font-variant-numeric: tabular-nums;">
+                    S/ <%= number_with_precision(v[:total_vendedor], precision: 2, separator: '.', delimiter: ',') %>
+                  </div>
+                <% end %>
+                <div style="margin-top: 8px; font-weight: 700; color: var(--accent-cyan); border-top: 1px solid rgba(0,212,255,0.3); padding-top: 4px; height: 1.25rem; display: flex; align-items: center; justify-content: flex-end; font-variant-numeric: tabular-nums;">
+                  S/ <%= number_with_precision(total_vendedores, precision: 2, separator: '.', delimiter: ',') %>
+                </div>
+              </td>
+              <!-- Columna Comisión Supervisor -->
+              <td class="text-right" style="vertical-align:top; font-size:0.875rem; color:var(--accent-green); font-weight:600; font-variant-numeric: tabular-nums;">
+                <% vendor_data.each do |v| %>
+                  <div style="margin-bottom: 4px; height: 1.25rem; display: flex; align-items: center; justify-content: flex-end; font-variant-numeric: tabular-nums;">
+                    S/ <%= number_with_precision(v[:total_supervisor], precision: 2, separator: '.', delimiter: ',') %>
+                  </div>
+                <% end %>
+                <div style="margin-top: 8px; font-weight: 700; color: var(--accent-cyan); border-top: 1px solid rgba(0,212,255,0.3); padding-top: 4px; height: 1.25rem; display: flex; align-items: center; justify-content: flex-end; font-variant-numeric: tabular-nums;">
+                  S/ <%= number_with_precision(total_supervisor, precision: 2, separator: '.', delimiter: ',') %>
+                </div>
+              </td>
+              <!-- Columna de edición (Factura -> Producto [Checkbox]) -->
+              <td class="text-left" style="display: none; vertical-align: top; padding: 10px 16px;" data-dashboard-target="commissionColumn">
+                <% if vendor_data.any? { |v| v[:invoices].any? } %>
+                  <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 4px; background: rgba(0, 212, 255, 0.08); border-radius: 4px; margin-bottom: 4px; border: 1px solid rgba(0, 212, 255, 0.1); padding-left: 4px; padding-right: 0;">
+                    <span style="font-size: 0.75rem; font-weight: 700; color: var(--accent-cyan); text-transform: uppercase; letter-spacing: 0.5px;">Seleccionar Grupo</span>
+                    <input type="checkbox" data-action="change->dashboard#toggleRowSelectAll" title="Seleccionar todos los items de este supervisor" style="margin-right: 3px;">
+                  </div>
+                <% end %>
+                <% vendor_data.each do |v| %>
+                  <% v[:invoices].each do |inv| %>
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 2px;" title="<%= inv[:numero_factura] %> - <%= inv[:producto_codigo] %>">
+                      <span style="font-size: 0.75rem; margin-left: 4px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        <%= "#{inv[:numero_factura]} -> #{inv[:producto_codigo]}" %>
+                      </span>
+                      <input type="checkbox" 
+                             class="commission-checkbox" 
+                             data-dashboard-target="itemCheckbox"
+                             data-url="<%= inv[:url] %>" 
+                             data-invoice-number="<%= inv[:numero_factura] %>"
+                             data-commission-amount="<%= (inv[:precio_soles].to_f * comision_pct).round(2) %>"
+                             data-vendor="<%= v[:nombre] %>"
+                             data-action="change->dashboard#onItemCheckboxChange"
+                             style="margin-right: 4px;"
+                             <%= 'checked' if inv[:comision_pagada_sup] %>>
+                    </div>
+                  <% end %>
+                <% end %>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="4"><strong>Total Comisión Supervisores</strong></td>
+            <td class="text-right">
+              <strong style="color:var(--accent-green); font-size:1.05rem;">
+                S/ <%= number_with_precision(
+                  (rows.sum { |r| r[:total_supervisor].to_f }).round(2),
+                  precision: 2, separator: '.', delimiter: ','
+                ) %>
+              </strong>
+            </td>
+            <td data-dashboard-target="commissionColumn" style="display: none;"></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  <% end %>
+</div>

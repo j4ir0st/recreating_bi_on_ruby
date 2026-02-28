@@ -3,7 +3,11 @@ class DashboardController < ApplicationController
 
   def index
     @active_tab = params[:tab] || "vendedor"
-    return unless load_data
+    if @active_tab == "supervisor"
+      return unless prepare_supervisor_data
+    else
+      return unless load_data
+    end
   end
 
   def productos
@@ -29,18 +33,17 @@ class DashboardController < ApplicationController
     # Inicializar valores mínimos necesarios para el layout (filtros)
     @selected_year = params[:year] || Date.today.year.to_s
     @selected_months = []
-    @selected_vendors = []
-    @selected_cancelado = "Todo"
-    @years = ["2025", "2026"]
-    @dates = (1..12).map { |m| "#{@selected_year}-#{m.to_s.rjust(2, '0')}" }
-    @vendors = []
+    raw_vendors = params[:vendor] || []
+    @selected_vendors = raw_vendors.is_a?(Array) ? raw_vendors : [raw_vendors].reject(&:blank?)
+    vendedores_filter = @selected_vendors.reject { |v| v == "Todas" }.first
 
     client = ApiClient.new(session[:api_token])
     # Cargar primera página de auditoría (60 registros), con filtros opcionales
     @audit_history = client.get_audit_history(
       page: 1,
       comprobantes_filter: params[:comprobantes_filter].to_s.strip,
-      usuario_filter: params[:usuario_filter].to_s.strip
+      usuario_filter: params[:usuario_filter].to_s.strip,
+      vendedores_filter: vendedores_filter
     )
     render partial: "dashboard/tabs/historial", locals: { audit_history: @audit_history }
   rescue UnauthorizedError
@@ -53,16 +56,32 @@ class DashboardController < ApplicationController
   # Endpoint JSON para paginación del historial (infinite scroll)
   def audit_data
     page = (params[:page] || 1).to_i
+    raw_vendors = params[:vendor] || []
+    selected_vendors = raw_vendors.is_a?(Array) ? raw_vendors : [raw_vendors].reject(&:blank?)
+    vendedores_filter = selected_vendors.reject { |v| v == "Todas" }.first
+
     client = ApiClient.new(session[:api_token])
     result = client.get_audit_history(
       page: page,
       comprobantes_filter: params[:comprobantes_filter].to_s.strip,
-      usuario_filter: params[:usuario_filter].to_s.strip
+      usuario_filter: params[:usuario_filter].to_s.strip,
+      vendedores_filter: vendedores_filter
     )
     render json: { records: result[:records], has_more: result[:has_more], page: page }
   rescue => e
     Rails.logger.error("AUDIT DATA ERROR: #{e.message}")
     render json: { error: e.message }, status: :internal_server_error
+  end
+
+  def supervisor
+    @active_tab = "supervisor"
+    return unless prepare_supervisor_data
+    render partial: "dashboard/tabs/supervisor", locals: { supervisor_rows: @supervisor_rows || [] }
+  rescue UnauthorizedError
+    render json: { error: "Sesión expirada. Por favor inicia sesión nuevamente." }, status: :unauthorized
+  rescue => e
+    Rails.logger.error("SUPERVISOR ACTION ERROR: #{e.class}: #{e.message}\n#{e.backtrace.first(5).join("\n")}")
+    render json: { error: "Error en Supervisor: #{e.message}" }, status: :internal_server_error
   end
 
   def update_commission
@@ -91,9 +110,13 @@ class DashboardController < ApplicationController
     success_count = 0
     errors = []
 
+    # Identificar el campo a actualizar según el tipo de comisión
+    # Para Supervisor usamos 'comision_pagada_sup' (vendedor usa 'comision_pagada')
+    field_to_patch = (params[:tipo_comision].to_s.downcase == 'supervisor') ? :comision_pagada_sup : :comision_pagada
+    
     updates.each do |update|
-      Rails.logger.info("=== PATCH: url=#{update["url"]} paid=#{update["paid"]} ===")
-      result = client.update_commission_status(update["url"], update["paid"])
+      Rails.logger.info("=== PATCH: url=#{update["url"]} paid=#{update["paid"]} field=#{field_to_patch} ===")
+      result = client.update_commission_status(update["url"], update["paid"], field: field_to_patch)
       if result[:success]
         success_count += 1
         Rails.logger.info("=== PATCH OK: #{update["url"]} ===")
@@ -120,44 +143,25 @@ class DashboardController < ApplicationController
           }
         end
 
-        comprobantes_list = signed_items.map { |i| i[:invoice] }.join(", ")
-        comisiones_list   = signed_items.map { |i| format("%g", i[:amount]) }.join(", ")
-        vendedores_list   = signed_items.map { |i| i[:vendor] }.join(", ")
+        full_name = [session[:first_name], session[:last_name]].compact.join(" ").strip
+        full_name = session[:username] || "Sistema" if full_name.blank?
 
-        total_comision = signed_items.sum { |i| i[:amount] }.round(2)
-
-        full_name = "#{session[:first_name]} #{session[:last_name]}".strip
-        full_name = session[:username] if full_name.empty?
-        full_name = "Usuario" if full_name.blank?
-
-        audit_data = {
-          comprobantes:  comprobantes_list,
-          comisiones:    comisiones_list,
-          vendedores:    vendedores_list,
-          cant_fact:     success_count,
-          total_comision: total_comision.round(2),
-          fecha_hora:    Time.now.iso8601,
-          usuario:       full_name
-        }
-        
-        Rails.logger.info("=== CREANDO AUDITORÍA: #{audit_data.to_json} ===")
-        audit_result = client.create_audit_record(audit_data)
-        if audit_result[:success]
-          Rails.logger.info("=== AUDITORÍA CREADA EXITOSAMENTE ===")
-        else
-          Rails.logger.error("=== FALLO AL CREAR AUDITORÍA: #{audit_result[:error]} ===")
-        end
+        client.create_audit_entry(
+          usuario: full_name,
+          tipo_comision: params[:tipo_comision] || "Vendedor",
+          detalles: signed_items
+        )
       rescue => e
-        Rails.logger.error("Error al crear registro de auditoría: #{e.message}\n#{e.backtrace.first(5).join("\n")}")
+        Rails.logger.error("FALLO CREACIÓN AUDITORIA: #{e.message}")
       end
     end
 
     if errors.empty?
-      render json: { success: true, message: "Se actualizaron #{success_count} comisiones correctamente." }
+      render json: { success: true, message: "Actualización masiva completada con éxito (#{success_count} registros)." }
     else
       render json: { 
         success: false, 
-        message: "Se actualizaron #{success_count} comisiones, pero hubo errores.", 
+        message: "Se actualizaron #{success_count} registros, pero hubo #{errors.size} errores.", 
         errors: errors 
       }, status: :multi_status
     end
@@ -216,7 +220,7 @@ class DashboardController < ApplicationController
 
   def load_filters_only(client = nil)
     client ||= ApiClient.new(session[:api_token])
-    @commissions = Rails.cache.fetch("repr_comisiones", expires_in: 12.hours) do
+    @commissions = Rails.cache.fetch("repr_comisiones", expires_in: 1.hour) do
       client.fetch_commissions
     end
     @vendors = @commissions.map { |c| c[:nombre].to_s.strip }.compact.uniq.reject { |v| v.upcase == "OFICINA" }.sort
@@ -230,6 +234,49 @@ class DashboardController < ApplicationController
     5 => 'mayo', 6 => 'junio', 7 => 'julio', 8 => 'agosto',
     9 => 'septiembre', 10 => 'octubre', 11 => 'noviembre', 12 => 'diciembre'
   }.freeze
+
+  def prepare_supervisor_data
+    # 0. Inicializar filtros (Sincronizado con load_data)
+    raw_years = params[:year] || []
+    @selected_years = raw_years.is_a?(Array) ? raw_years.reject(&:blank?) : [raw_years.to_s].reject(&:blank?)
+    @selected_years = [Date.today.year.to_s] if @selected_years.empty?
+    @selected_year = @selected_years.sort.last
+    @selected_months = []
+    @selected_vendors = []
+    @selected_cancelado = "Todo"
+    @years = ([Date.today.year, 2025].max).downto(2025).map(&:to_s).reverse
+    @dates = (1..12).map { |m| "#{@selected_year}-#{m.to_s.rjust(2, '0')}" }
+    @vendors = []
+
+    min_year = @selected_years.map(&:to_i).min
+    max_year = @selected_years.map(&:to_i).max
+    start_date = Date.new(min_year - 1, 12, 24).strftime("%Y-%m-%d")
+    end_date   = Date.new(max_year, 12, 23).strftime("%Y-%m-%d 23:59:59")
+
+    client = ApiClient.new(session[:api_token])
+
+    # 1. Cargar bases (Representantes y sus mapeos)
+    @commissions = Rails.cache.fetch("repr_comisiones_v2", expires_in: 1.hour) { client.fetch_commissions }
+    @commissions_map = (@commissions || []).index_by { |c| c[:nombre].to_s.strip.upcase }
+    @vendors = (@commissions || []).map { |c| c[:nombre].to_s.strip }.compact.uniq.reject { |v| v.upcase == "OFICINA" }.sort
+
+    supervisor_commissions = Rails.cache.fetch("repr_comisiones_sup", expires_in: 1.hour) { client.fetch_supervisor_commissions }
+    supervisor_keys = Rails.cache.fetch("repr_comisiones_keys", expires_in: 1.hour) { client.fetch_supervisor_keys }
+
+    # 2. Generar Filas (con el filtro de comision_pagada)
+    pagada_filter = params[:comision_pagada] || "N"
+    @supervisor_rows = build_supervisor_rows(supervisor_commissions, supervisor_keys, @commissions, client, start_date, end_date, pagada_filter)
+    
+    true
+  rescue UnauthorizedError
+    session[:api_token] = nil
+    redirect_to login_path, alert: "Tu sesión ha expirado."
+    return false
+  rescue => e
+    Rails.logger.error("PREPARE SUPERVISOR ERROR: #{e.message}")
+    @supervisor_rows = []
+    true # Mostrar vacío en lugar de explotar
+  end
 
   def load_data
     # 0. Inicializar estado básico para evitar Nil en las vistas si algo falla
@@ -264,9 +311,15 @@ class DashboardController < ApplicationController
       client = ApiClient.new(session[:api_token])
 
       if @active_tab == "historial"
-        @audit_history = client.get_audit_history(page: 1)
+        vendedores_filter = @selected_vendors.reject { |v| v == "Todas" }.first
+        @audit_history = client.get_audit_history(
+          page: 1,
+          comprobantes_filter: params[:comprobantes_filter].to_s.strip,
+          usuario_filter: params[:usuario_filter].to_s.strip,
+          vendedores_filter: vendedores_filter
+        )
         # Carga la lista de vendedores desde caché (no llama a la API si ya está cacheado)
-        @commissions = Rails.cache.fetch("repr_comisiones", expires_in: 7.days) { client.fetch_commissions }
+        @commissions = Rails.cache.fetch("repr_comisiones", expires_in: 1.hour) { client.fetch_commissions }
         @vendors = (@commissions || []).map { |c| c[:nombre].to_s.strip }.compact.uniq.reject { |v| v.upcase == "OFICINA" }.sort
         return true
       end
@@ -303,10 +356,10 @@ class DashboardController < ApplicationController
       end_date_str = end_date.strftime("%Y-%m-%d 23:59:59")
 
       # Tabla maestra de comisiones (datos que rara vez cambian — cache 7 días)
-      @commissions = Rails.cache.fetch("repr_comisiones", expires_in: 7.days) do
+      @commissions = Rails.cache.fetch("repr_comisiones", expires_in: 1.day) do
         client.fetch_commissions
       end
-      @product_commissions = Rails.cache.fetch("repr_comisiones_prod", expires_in: 7.days) do
+      @product_commissions = Rails.cache.fetch("repr_comisiones_prod", expires_in: 1.day) do
         client.fetch_product_commissions
       end
 
@@ -326,6 +379,10 @@ class DashboardController < ApplicationController
 
       if params[:comision_pagada].present? && params[:comision_pagada] != "Todo"
         api_params[:fd__comision_pagada] = (params[:comision_pagada] == "S")
+      end
+
+      if @selected_cancelado != "Todo"
+        api_params[:cancelado] = @selected_cancelado
       end
 
       # Filtro de vendedores: sólo cuando hay vendedores específicos (NO cuando es "Todas" ni cuando está vacío)
@@ -375,9 +432,7 @@ class DashboardController < ApplicationController
         end
       end
 
-      if @selected_cancelado != "Todo"
-        @details = @details.select { |d| d["cancelado"].to_s.strip.upcase == @selected_cancelado }
-      end
+      # (El filtro cancelado ya se aplicó en el servidor via cancelado)
       
       # (El filtro de vendedores ya se aplicó en el servidor via vendedor__in)
 
@@ -548,6 +603,143 @@ class DashboardController < ApplicationController
     else
       date_obj.strftime("%Y-%m")
     end
+  end
+
+  # ====== Métodos privados para la pestaña Supervisor ======
+
+  # Construye las filas de la tabla Supervisor cruzando Repr_Comision_Sup con Repr_ComisionKey
+  def build_supervisor_rows(supervisor_commissions, supervisor_keys, commissions_data, client, start_date, end_date, pagada_filter)
+    # 1. Crear mapa de vendedores por supervisor
+    # Usamos tanto el nombre como el ID/URL si están presentes para mayor robustez
+    sup_vendors_map = Hash.new { |h, k| h[k] = [] }
+    (supervisor_keys || []).each do |key_record|
+      # Rcs_id suele ser el ID o URL del supervisor
+      sup_id = key_record[:rcs_id].to_s.strip
+      # Rc_id suele ser el nombre o ID del vendedor
+      vendor_id = key_record[:rc_id].to_s.strip
+      
+      if sup_id.present? && vendor_id.present?
+        # Almacenamos por el identificador del supervisor
+        sup_vendors_map[sup_id] << vendor_id
+        # También intentamos por el ID extraído de la URL si es el caso
+        if sup_id.include?("/")
+          id_part = sup_id.split('/').last
+          sup_vendors_map[id_part] << vendor_id if id_part.present?
+        end
+      end
+    end
+
+    # 2. Procesar cada supervisor
+    (supervisor_commissions || []).map do |sup|
+      nombre = (sup[:nombre] || sup["nombre"] || "").strip
+      comision_pct = (sup[:comision] || sup["comision"] || 0).to_f
+      sup_url = sup[:url].to_s
+      sup_id_from_url = sup_url.split('/').last
+
+      # Buscar vendedores asignados usando nombre, url o id extraído
+      assigned_vendors = []
+      assigned_vendors.concat(sup_vendors_map[nombre] || [])
+      assigned_vendors.concat(sup_vendors_map[sup_url] || [])
+      assigned_vendors.concat(sup_vendors_map[sup_id_from_url] || [])
+      assigned_vendors = assigned_vendors.uniq.map(&:strip).reject(&:blank?)
+
+      vendor_data = []
+      total_sup_full = 0.0
+
+      if assigned_vendors.any?
+        # BATCH FETCH: Pedir todos los vendedores del supervisor en una (o pocas) llamadas
+        # Dividimos en grupos de 10 para no saturar la URL si hay demasiados
+        assigned_vendors.each_slice(10) do |vendor_group|
+          batch_results = fetch_batch_vendor_commission(client, vendor_group, start_date, end_date, pagada_filter)
+          
+          batch_results.each do |v_nombre, result|
+            v_total = result[:total_vendedor]
+            v_invoices = result[:invoices]
+            v_sup = v_total * comision_pct
+            
+            vendor_data << {
+              nombre: v_nombre,
+              total_vendedor: v_total,
+              total_supervisor: v_sup,
+              invoices: v_invoices
+            }
+            total_sup_full += v_sup
+          end
+        end
+      end
+
+      {
+        supervisor: nombre,
+        comision_pct: comision_pct,
+        vendor_data: vendor_data,
+        total_supervisor: total_sup_full
+      }
+    end
+  end
+
+  # Nueva función para obtener comisiones de varios vendedores a la vez (Optimización)
+  def fetch_batch_vendor_commission(client, vendor_names, start_date, end_date, pagada_filter)
+    api_params = {
+      max_pages: 15, # Reducido para evitar el "massive load" por cada supervisor
+      start_date: start_date,
+      end_date: end_date,
+      titulo_grat: 'N',
+      estado__in: 'ACT,NCA',
+      cancelado: 'S',
+      canje: 'T018',
+      vendedor__in: vendor_names.join(",")
+    }
+    
+    if pagada_filter.present? && pagada_filter != "Todo"
+      # Usamos doble underscore para el filtro de la API
+      api_params[:fd__comision_pagada_sup] = (pagada_filter == "S")
+    end
+
+    api_data = client.fetch_details_pages(**api_params)
+    all_details = (api_data[:results] || []).map { |d| d.transform_keys(&:to_s) }
+    
+    # Agrupar por vendedor para retornar resultados individuales
+    # Inicializar con todos los nombres para asegurar que existan aunque no tengan datos
+    results_by_vendor = vendor_names.each_with_object({}) do |name, h|
+      h[name] = { total_vendedor: 0.0, invoices: [] }
+    end
+
+    all_details.each do |inv|
+      v_name = inv["vendedor"].to_s.strip
+      # Intentar encontrar el nombre clave en el map (manejo de nombres truncados si aplica)
+      target_name = vendor_names.find { |n| v_name.upcase.start_with?(n.upcase) } || v_name
+      
+      results_by_vendor[target_name] ||= { total_vendedor: 0.0, invoices: [] }
+      
+      inv_num = inv["numero_factura"] || inv["nro_fact"]
+      tipo = inv["tipo_cliente"].to_s.upcase
+      
+      # Calcular porcentaje vendedor para este vendedor
+      com_info = @commissions_map.present? ? @commissions_map[target_name.upcase] : nil
+      pct_vend = 0.0
+      if com_info
+        pct_vend = tipo.include?("PRIVADO") ? (com_info[:comision_priv] || com_info[:comision_privado]).to_f : pct_vend
+        pct_vend = tipo.include?("PUBLICO")  ? (com_info[:comision_pub] || com_info[:comision_publico]).to_f  : pct_vend
+      end
+
+      (inv["fd"] || []).each do |item|
+        item = item.transform_keys(&:to_s)
+        precio = item["precio_soles"].to_f
+        prod_code = item["producto_codigo"] || item["prod"] || item["producto"]
+        
+        results_by_vendor[target_name][:invoices] << {
+          numero_factura: inv_num,
+          url: item["url"],
+          precio_soles: precio,
+          vendedor: v_name,
+          producto_codigo: prod_code,
+          comision_pagada_sup: (item["comision_pagada_sup"] == true)
+        }
+        results_by_vendor[target_name][:total_vendedor] += (precio * pct_vend)
+      end
+    end
+
+    results_by_vendor
   end
 
   # extract_date_by_granularity: Extrae la parte relevante de la fecha (YYYY-MM-DD o YYYY-MM)

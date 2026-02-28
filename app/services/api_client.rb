@@ -224,6 +224,16 @@ class ApiClient
     fetch_all_resources("/Repr_Comision_Prod/")
   end
 
+  # Obtener Tabla de Comisiones de Supervisores
+  def fetch_supervisor_commissions
+    fetch_all_resources("/Repr_Comision_Sup/")
+  end
+
+  # Obtener Tabla de Llaves Supervisor-Representante
+  def fetch_supervisor_keys
+    fetch_all_resources("/Repr_ComisionKey/")
+  end
+
   # Obtener un producto específico por su código (Búsqueda rápida optimizada)
   def fetch_product_by_code(code)
     url = "/SI_Producto/"
@@ -257,8 +267,8 @@ class ApiClient
   end
 
   # Actualiza el estado de la comisión enviando un PATCH a la URL específica del recurso
-  def update_commission_status(resource_url, paid_status)
-    payload = { comision_pagada: paid_status }
+  def update_commission_status(resource_url, paid_status, field: :comision_pagada)
+    payload = { field.to_sym => paid_status }
     
     # Asegurar que la ruta termine en / antes de los query parameters
     uri = URI.parse(resource_url)
@@ -301,10 +311,11 @@ class ApiClient
   end
 
   # Obtiene una página del historial de auditoría de comisiones (60 registros por página, desc por id)
-  def get_audit_history(page: 1, comprobantes_filter: nil, usuario_filter: nil)
+  def get_audit_history(page: 1, comprobantes_filter: nil, usuario_filter: nil, vendedores_filter: nil)
     url = "/FactComision_Audit/?format=json&page=#{page}"
     url += "&comprobantes__contains=#{CGI.escape(comprobantes_filter)}" if comprobantes_filter.present?
     url += "&usuario__contains=#{CGI.escape(usuario_filter)}" if usuario_filter.present?
+    url += "&vendedores__contains=#{CGI.escape(vendedores_filter)}" if vendedores_filter.present?
     Rails.logger.info("=== GET AUDIT HISTORY: #{BASE_URL}#{url} ===")
     response = @conn.get(url)
     if response.success?
@@ -325,16 +336,42 @@ class ApiClient
     end
   end
 
-  # Crea un registro de auditoría
-  def create_audit_record(data)
-    # data: { comprobantes, cant_fact, total_comision, fecha_hora, usuario }
-    response = @conn.post("/FactComision_Audit/?format=json", data.to_json, { "Content-Type" => "application/json" })
+  # Crea una entrada de auditoría (Historial)
+  def create_audit_entry(usuario:, tipo_comision:, detalles:)
+    # detalles: array de { invoice, amount, vendor }
+    
+    unique_invoices = detalles.map { |d| d[:invoice] }.uniq
+    total_amount = detalles.sum { |d| d[:amount].to_f }.round(2)
+    
+    # Concatenar campos con comas según solicitud del usuario
+    comprobantes_str = detalles.map { |d| d[:invoice].to_s.strip }.join(", ")
+    comisiones_str   = detalles.map { |d| '%.2f' % d[:amount].to_f }.join(", ")
+    vendedores_str   = detalles.map { |d| d[:vendor].to_s.strip }.join(", ")
+
+    payload = {
+      usuario: usuario,
+      tipo_comision: tipo_comision,
+      comprobantes: comprobantes_str,
+      comisiones: comisiones_str,
+      vendedores: vendedores_str,
+      cant_fact: unique_invoices.size,
+      total_comision: total_amount,
+      fecha_hora: Time.current.iso8601
+    }
+
+    Rails.logger.info("Enviando Auditoría: #{payload.inspect}")
+
+    response = @conn.post("/FactComision_Audit/?format=json", payload.to_json, { "Content-Type" => "application/json" })
+    
     if response.success?
       { success: true, data: JSON.parse(response.body, symbolize_names: true) }
     else
-      Rails.logger.error("Error al crear auditoría: #{response.status} - BODY: #{response.body}")
+      Rails.logger.error("Error API Auditoría: #{response.status} - #{response.body}")
       { success: false, error: response.body }
     end
+  rescue => e
+    Rails.logger.error("Excepción en create_audit_entry: #{e.message}")
+    { success: false, error: e.message }
   end
 
   private

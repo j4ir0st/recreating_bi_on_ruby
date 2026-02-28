@@ -15,6 +15,7 @@ Rails.application.routes.draw do
   get "reporte", to: "dashboard#reporte"
   get "historial", to: "dashboard#audit"
   get "historial_data", to: "dashboard#audit_data"
+  get "supervisor", to: "dashboard#supervisor"
   get "products", to: "dashboard#products_json"
   post "update_commission", to: "dashboard#update_commission"
   post "mass_update_commissions", to: "dashboard#mass_update_commissions"

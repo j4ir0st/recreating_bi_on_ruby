@@ -36,13 +36,14 @@
     <table class="data-table" id="audit-table">
       <thead>
         <tr>
-          <th style="width: 180px;">Fecha y Hora</th>
-          <th style="width: 150px;">Usuario</th>
-          <th style="width: 80px;" class="text-center">Cant.</th>
-          <th style="width: 110px;" class="text-right">Total Comisión</th>
-          <th>Comprobantes</th>
-          <th style="width: 150px;">Comisiones</th>
+          <th style="width: 140px;">Fecha y Hora</th>
+          <th style="width: 140px;">Usuario</th>
+          <th style="width: 55px;" class="text-center">Cant.</th>
+          <th style="width: 100px;" class="text-right">Total Com.</th>
+          <th style="width: 200px;">Comprobantes</th>
+          <th style="width: 200px;">Comisiones</th>
           <th style="width: 200px;">Vendedores</th>
+          <th style="width: 110px;">Tipo</th>
           <th class="audit-sel-col text-center" style="width:44px; display:none;"></th>
         </tr>
       </thead>
@@ -82,17 +83,20 @@
               <td class="text-right" style="font-weight: 600; color: <%= total_color %>">
                 S/ <%= number_with_precision(total_val, precision: 2, separator: '.', delimiter: ',') %>
               </td>
-              <td style="font-size: 0.8rem; color: var(--text-secondary); max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+              <td style="font-size: 0.8rem; color: var(--text-secondary); width:200px; white-space: normal; word-break: break-word; vertical-align: top;"
                   title="<%= audit[:comprobantes] || audit["comprobantes"] %>">
                 <%= audit[:comprobantes] || audit["comprobantes"] %>
               </td>
-              <td style="font-size: 0.8rem; color: var(--text-secondary); max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+              <td style="font-size: 0.8rem; color: var(--text-secondary); width:200px; white-space: normal; word-break: break-word; vertical-align: top;"
                   title="<%= audit[:comisiones] || audit["comisiones"] %>">
                 <%= audit[:comisiones] || audit["comisiones"] %>
               </td>
-              <td style="font-size: 0.8rem; color: var(--text-secondary); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+              <td style="font-size: 0.8rem; color: var(--text-secondary); width:200px; white-space: normal; word-break: break-word; vertical-align: top;"
                   title="<%= audit[:vendedores] || audit["vendedores"] %>">
                 <%= audit[:vendedores] || audit["vendedores"] %>
+              </td>
+              <td style="font-size: 0.8rem; color: var(--text-muted);">
+                <%= audit[:tipo_comision] || audit["tipo_comision"] %>
               </td>
               <td class="audit-sel-col text-center" style="display:none;">
                 <input type="checkbox" class="audit-check"
@@ -216,18 +220,20 @@ function exportAuditToExcel() {
     var totalVal = parseFloat(audit.total_comision || 0);
     var totalColor = totalVal < 0 ? '#ef4444' : 'var(--accent-green)';
     var total = totalVal.toFixed(2);
-    var comps  = audit.comprobantes || '';
-    var comiss = audit.comisiones   || '';
-    var vends  = audit.vendedores   || '';
+    var comps  = audit.comprobantes   || '';
+    var comiss = audit.comisiones     || '';
+    var vends  = audit.vendedores     || '';
+    var tipo   = audit.tipo_comision  || '';
     var displayStyle = _auditSelectMode ? 'table-cell' : 'none';
     return '<tr>' +
       '<td>' + fecha + '</td>' +
       '<td><span style="font-weight:600;color:var(--accent-cyan);">' + usuario + '</span></td>' +
       '<td class="text-center"><span class="status-badge" style="background:rgba(0,212,255,0.1);color:var(--accent-cyan);border:1px solid rgba(0,212,255,0.2);">' + cant + '</span></td>' +
       '<td class="text-right" style="font-weight:600;color:' + totalColor + ';">S/ ' + total + '</td>' +
-      '<td style="font-size:0.8rem;color:var(--text-secondary);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + comps + '">' + comps + '</td>' +
-      '<td style="font-size:0.8rem;color:var(--text-secondary);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + comiss + '">' + comiss + '</td>' +
-      '<td style="font-size:0.8rem;color:var(--text-secondary);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + vends + '">' + vends + '</td>' +
+      '<td style="font-size:0.8rem;color:var(--text-secondary);width:200px;white-space:normal;word-break:break-word;vertical-align:top;" title="' + comps + '">' + comps + '</td>' +
+      '<td style="font-size:0.8rem;color:var(--text-secondary);width:200px;white-space:normal;word-break:break-word;vertical-align:top;" title="' + comiss + '">' + comiss + '</td>' +
+      '<td style="font-size:0.8rem;color:var(--text-secondary);width:200px;white-space:normal;word-break:break-word;vertical-align:top;" title="' + vends + '">' + vends + '</td>' +
+      '<td style="font-size:0.8rem;color:var(--text-muted);">' + tipo + '</td>' +
       '<td class="audit-sel-col text-center" style="display:' + displayStyle + ';">' +
         '<input type="checkbox" class="audit-check"' +
         ' data-comps="' + comps + '" data-comis="' + comiss + '" data-vends="' + vends + '"' +

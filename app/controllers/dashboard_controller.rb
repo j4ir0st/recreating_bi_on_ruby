@@ -171,7 +171,7 @@ class DashboardController < ApplicationController
     render json: { error: e.message }, status: :internal_server_error
   end
 
-  # Endpoint JSON: carga as\u00edncrona de descripciones de productos
+  # Endpoint JSON: carga asíncrona de descripciones de productos
   def products_json
     client = ApiClient.new(session[:api_token])
     requested_codes = params[:codes].to_s.split(',').map(&:strip).reject(&:empty?)
@@ -726,14 +726,22 @@ class DashboardController < ApplicationController
         item = item.transform_keys(&:to_s)
         precio = item["precio_soles"].to_f
         prod_code = item["producto_codigo"] || item["prod"] || item["producto"]
-        
+        item_pagada = (item["comision_pagada_sup"] == true)
+
+        # Filtrar items a nivel individual: la API filtra por factura (si tiene algún item
+        # pendiente devuelve toda la factura). Aquí excluimos los items ya pagados cuando
+        # el filtro es "Pendiente", y los no pagados cuando el filtro es "Pagado".
+        next if pagada_filter == "N" && item_pagada          # item pagado pero filtro = Pendiente
+        next if pagada_filter == "S" && !item_pagada         # item pendiente pero filtro = Pagado
+
         results_by_vendor[target_name][:invoices] << {
           numero_factura: inv_num,
           url: item["url"],
           precio_soles: precio,
           vendedor: v_name,
           producto_codigo: prod_code,
-          comision_pagada_sup: (item["comision_pagada_sup"] == true)
+          comision_pagada_sup: item_pagada,
+          pct_vend: pct_vend
         }
         results_by_vendor[target_name][:total_vendedor] += (precio * pct_vend)
       end

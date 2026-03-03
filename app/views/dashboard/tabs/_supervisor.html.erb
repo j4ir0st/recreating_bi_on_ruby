@@ -119,7 +119,7 @@
                              data-dashboard-target="itemCheckbox"
                              data-url="<%= inv[:url] %>" 
                              data-invoice-number="<%= inv[:numero_factura] %>"
-                             data-commission-amount="<%= (inv[:precio_soles].to_f * comision_pct).round(2) %>"
+                             data-commission-amount="<%= (inv[:precio_soles].to_f * inv[:pct_vend].to_f * comision_pct).round(2) %>"
                              data-vendor="<%= v[:nombre] %>"
                              data-action="change->dashboard#onItemCheckboxChange"
                              style="margin-right: 4px;"

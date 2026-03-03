@@ -518,24 +518,168 @@
           return;
         }
 
-        // Crear una copia de la tabla para manipular los datos sin afectar la vista
+        // === CASO ESPECIAL: Supervisor — expansión de filas de vendedores ===
+        if (this.currentTab === 'supervisor') {
+          this._exportSupervisorToExcel(table);
+          return;
+        }
+
+        // === CASO GENERAL: Vendedor / Productos ===
         const tableCopy = table.cloneNode(true);
-        
-        // Limpiar símbolos de moneda y formatos para que Excel los reconozca como números
+        const dateRegex = /^\d{2}\/\d{2}\/\d{4}$/;
+
+        // Limpiar símbolos de moneda y proteger fechas
         tableCopy.querySelectorAll('td').forEach(td => {
           let text = td.innerText.trim();
-          // Si el texto parece un monto (empieza con S/), lo limpiamos
-          if (text.startsWith('S/')) {
-            // Eliminar 'S/', espacios y comas de miles. Mantener el punto decimal.
+
+          // Si el texto es una fecha en formato DD/MM/YYYY, anteponer comilla simple
+          // para forzar a Excel a tratarlo como texto y no reinterpretarlo
+          if (dateRegex.test(text)) {
+            td.setAttribute('data-t', 's');
+          } else if (text.startsWith('S/')) {
             let numericValue = text.replace(/S\/\s?/, '').replace(/,/g, '');
             td.innerText = numericValue;
-            // Añadir metadato para SheetJS si es necesario (t: 'n' para número)
             td.setAttribute('data-t', 'n');
           }
         });
 
         const wb = XLSX.utils.table_to_book(tableCopy, { sheet: "Comisiones", raw: false });
+
+        // Forzar texto en celdas de fecha
+        const ws = wb.Sheets["Comisiones"];
+        if (ws) {
+          Object.keys(ws).forEach(key => {
+            if (key.startsWith('!')) return;
+            const cell = ws[key];
+            if (typeof cell.v === 'string' && dateRegex.test(cell.v.trim())) {
+              cell.t = 's';
+              cell.z = '@';
+            }
+          });
+        }
+
         const fileName = `Comisiones_${this.currentTab}_${new Date().toISOString().slice(0,10)}.xlsx`;
+        XLSX.writeFile(wb, fileName);
+      }
+
+      _exportSupervisorToExcel(table) {
+        // --- Utilidades ---
+        const getDivTexts = (td) => {
+          const divs = td.querySelectorAll('div');
+          return divs.length > 0
+            ? Array.from(divs).map(d => d.innerText.trim()).filter(t => t.length > 0)
+            : [td.innerText.trim()];
+        };
+
+        const cleanAmount = (text) => {
+          if (typeof text === 'string' && text.includes('S/')) {
+            const n = parseFloat(text.replace(/S\/\s?/, '').replace(/,/g, ''));
+            return isNaN(n) ? text : n;
+          }
+          return text;
+        };
+
+        // --- Hoja 1: Resumen por Supervisor / Vendedor ---
+        const summaryHeaders = ['Supervisor', 'Comisión (%)', 'Vendedor', 'Comisión Vendedor (S/)', 'Comisión Supervisor (S/)'];
+        const summaryRows = [summaryHeaders];
+
+        // Datos por supervisor para las hojas de detalle
+        const supervisorSheets = []; // [{ name, invoiceRows[] }]
+
+        const bodyRows = table.querySelectorAll('tbody tr');
+        bodyRows.forEach(tr => {
+          const tds = tr.querySelectorAll('td');
+          if (tds.length < 5) return;
+
+          const supervisor  = tds[0].innerText.trim();
+          const comisionPct = tds[1].innerText.trim();
+          const vendedores  = getDivTexts(tds[2]);
+          const comVendedor = getDivTexts(tds[3]);
+          const comSuper    = getDivTexts(tds[4]);
+
+          // Filas de resumen
+          vendedores.forEach((vend, i) => {
+            const cvText  = comVendedor[i] || '';
+            const csText  = comSuper[i]    || '';
+            summaryRows.push([
+              i === 0 ? supervisor  : '',
+              i === 0 ? comisionPct : '',
+              vend,
+              cleanAmount(cvText),
+              cleanAmount(csText)
+            ]);
+          });
+          summaryRows.push(['', '', '', '', '']); // separador
+
+          // --- Hoja de detalle por supervisor ---
+          // La columa de edición (índice 5 o el último td visible) tiene los checkboxes
+          const commissionTd = tr.querySelector('td[data-dashboard-target="commissionColumn"]');
+          if (commissionTd) {
+            const invoiceRows = [['Vendedor', 'Nro. Factura', 'Producto', 'Comisión (S/)', 'Pagada']];
+
+            commissionTd.querySelectorAll('.commission-checkbox').forEach(cb => {
+              const vendor    = cb.dataset.vendor          || '';
+              const invoice   = cb.dataset.invoiceNumber   || '';
+              const amount    = parseFloat(cb.dataset.commissionAmount) || 0;
+              const pagada    = cb.checked ? 'SI' : 'NO';
+
+              // Extraer el código de producto del span hermano (texto: "FAC -> PROD")
+              const span = cb.closest('div')?.querySelector('span');
+              const labelText = span ? span.innerText.trim() : '';
+              const parts = labelText.split('->');
+              const producto = parts.length > 1 ? parts[1].trim() : labelText;
+
+              invoiceRows.push([vendor, invoice, producto, amount, pagada]);
+            });
+
+            if (invoiceRows.length > 1) {
+              // Nombre de hoja: primeros 28 chars para respetar límite de Excel
+              const sheetName = supervisor.substring(0, 28).trim();
+              supervisorSheets.push({ name: sheetName, rows: invoiceRows });
+            }
+          }
+        });
+
+        // Total del tfoot — usar el td visible (el que NO está oculto)
+        const tfootRow = table.querySelector('tfoot tr');
+        if (tfootRow) {
+          const tfootTds = tfootRow.querySelectorAll('td:not([style*="display: none"])');
+          // tfootTds[0] = colspan=4 con el label, tfootTds[1] = el monto
+          const totalTd  = tfootTds[1] || tfootTds[0];
+          const totalText = totalTd?.innerText?.trim() || '';
+          summaryRows.push(['Total Comisión Supervisores', '', '', '', cleanAmount(totalText)]);
+        }
+
+        // --- Construir el workbook ---
+        const wb = XLSX.utils.book_new();
+
+        // Hoja de resumen (primera)
+        const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
+        wsSummary['!cols'] = [
+          { wch: 30 }, { wch: 14 }, { wch: 34 }, { wch: 24 }, { wch: 24 }
+        ];
+        XLSX.utils.book_append_sheet(wb, wsSummary, 'Resumen');
+
+        // Una hoja por supervisor
+        supervisorSheets.forEach(({ name, rows }) => {
+          const ws = XLSX.utils.aoa_to_sheet(rows);
+          ws['!cols'] = [
+            { wch: 34 }, // Vendedor
+            { wch: 16 }, // Nro. Factura
+            { wch: 36 }, // Producto
+            { wch: 16 }, // Comisión
+            { wch: 10 }, // Pagada
+          ];
+          // Evitar nombre de hoja duplicado agregando un sufijo si fuera necesario
+          let sheetName = name;
+          let suffix = 2;
+          while (wb.SheetNames.includes(sheetName)) {
+            sheetName = `${name.substring(0, 25)} ${suffix++}`;
+          }
+          XLSX.utils.book_append_sheet(wb, ws, sheetName);
+        });
+
+        const fileName = `Comisiones_supervisor_${new Date().toISOString().slice(0, 10)}.xlsx`;
         XLSX.writeFile(wb, fileName);
       }
     });

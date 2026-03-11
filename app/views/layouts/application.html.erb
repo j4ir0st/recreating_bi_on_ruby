@@ -17,12 +17,13 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
   <script type="module">
-    import * as Turbo from "https://cdn.skypack.dev/@hotwired/turbo@7.3.0";
-    import { Application, Controller } from "https://cdn.skypack.dev/@hotwired/stimulus@3.2.2";
+    import * as Turbo from "https://cdn.jsdelivr.net/npm/@hotwired/turbo@7.3.0/+esm";
+    import { Application, Controller } from "https://cdn.jsdelivr.net/npm/@hotwired/stimulus@3.2.2/+esm";
 
     const application = Application.start();
+    window.Turbo = Turbo; // Hacer Turbo accesible globalmente
 
-    // Controlador Stimulus del Dashboard
+    // Controlador Stimulus para el Panel de Control (Dashboard)
     application.register("dashboard", class extends Controller {
       static targets = ["content", "vendorSelect", "dateSelect", "yearSelect", "canceladoSelect", 
                         "editIcon", "commissionColumn", "selectAllCheckbox", "itemCheckbox",
@@ -44,9 +45,14 @@
             if (openDropdowns.length > 0) {
               openDropdowns.forEach(d => d.classList.remove('show'));
               // El usuario terminó la selección al hacer click fuera
-              this.filterChanged();
+              this.filterChanged(e);
             }
           }
+        });
+
+        // Escuchar el evento del date range picker (OK)
+        document.getElementById('filter-form')?.addEventListener('drp:changed', () => {
+          this.filterChanged();
         });
 
         // Soporte para tecla Enter para aplicar filtros rápidamente
@@ -239,7 +245,13 @@
         return params.toString();
       }
 
-      filterChanged() {
+      filterChanged(e) {
+        // Ignorar si el click fue sobre el disparador del DateRangePicker
+        if (e && e.target && (e.target.closest('.drp-trigger') || e.target.classList.contains('drp-trigger'))) {
+          console.log('[filtro] Click en drp-trigger detectado, ignorando filterChanged prematuro');
+          return;
+        }
+
         const current = this._getFormSnapshot();
         if (current === this._filterSnapshot) {
           console.log('[filtro] Sin cambios, omitiendo consulta a la API');
@@ -284,7 +296,19 @@
           params.append(key, value);
         }
 
-        window.location.href = `${window.location.pathname}?${params.toString()}`;
+        const url = `${window.location.pathname}?${params.toString()}`;
+        console.log(`[filtro] Navegando via Turbo a: ${url}`);
+        
+        try {
+          if (window.Turbo) {
+            window.Turbo.visit(url);
+          } else {
+            window.location.href = url;
+          }
+        } catch (err) {
+          console.error("[filtro] Error en Turbo.visit, usando navegación estándar:", err);
+          window.location.href = url;
+        }
       }
 
       switchTab(e) {
@@ -350,12 +374,16 @@
           .then(html => {
             if (this.hasContentTarget) {
               this.contentTarget.innerHTML = html;
-              // Browsers don't auto-execute scripts injected via innerHTML.
-              // Re-insert each script so it runs (fixes historial toggle, infinite scroll, etc.)
+              // Los navegadores no autoejecutan scripts inyectados vía innerHTML.
+              // Re-insertamos cada script para que se ejecute (arregla toggle de historial, scroll infinito, etc.)
               this.contentTarget.querySelectorAll('script').forEach(old => {
-                const s = document.createElement('script');
-                s.textContent = old.textContent;
-                old.replaceWith(s);
+                try {
+                  const s = document.createElement('script');
+                  s.textContent = old.textContent;
+                  old.replaceWith(s);
+                } catch (e) {
+                  console.warn("[Dashboard] Error al re-ejecutar script inyectado:", e);
+                }
               });
             }
             // Actualizar el snapshot después de cargar la nueva pestaña con sus filtros actuales
@@ -851,7 +879,282 @@
         });
       }
     });
+
+    // ===== MÓDULO DE SELECTOR DE RANGO DE FECHAS (DATE RANGE PICKER) =====
+    (function() {
+      const MES_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                      'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+      const MES_ES_SHORT = ['ene','feb','mar','abr','may','jun',
+                            'jul','ago','sep','oct','nov','dic'];
+      const DAYS_SHORT = ['Lu','Ma','Mi','Ju','Vi','Sá','Do'];
+      const MIN_YEAR = 2025;
+      const MAX_YEAR = new Date().getFullYear();
+
+      function pad(n){ return String(n).padStart(2,'0'); }
+      function fmtDate(d){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+
+      function buildLabel(start, end) {
+        if (!start && !end) return 'Rango de fechas';
+        if (start && !end)  return `${start.getDate()} ${MES_ES_SHORT[start.getMonth()]} → …`;
+        const year  = end.getFullYear();
+        const month = MES_ES[end.getMonth()].toLowerCase();
+        return `${year} ${month} ${start.getDate()}->${end.getDate()}`;
+      }
+
+      function createPicker(trigger, hiddenStart, hiddenEnd) {
+        // Estado interno
+        let selStart = hiddenStart.value ? new Date(hiddenStart.value + 'T00:00:00') : null;
+        let selEnd   = hiddenEnd.value   ? new Date(hiddenEnd.value   + 'T00:00:00') : null;
+        let step     = selStart ? (selEnd ? 0 : 1) : 0;
+        let viewYear, viewMonth;
+        let mode = 'days';
+
+        const today = new Date();
+        if (selEnd) {
+          viewYear  = selEnd.getFullYear();
+          viewMonth = selEnd.getMonth();
+        } else {
+          viewYear  = today.getFullYear();
+          viewMonth = today.getMonth();
+        }
+
+        // === Usar superposición estática ===
+        const overlay = document.getElementById('main-drp-overlay');
+        if (!overlay) {
+          console.error('[DRP] Overlay estático no encontrado');
+          return;
+        }
+        
+        // El contenido se regenera cada vez que se abre para este trigger específico
+        function openPicker() {
+          overlay.innerHTML = `
+            <div class="drp-popup">
+              <div class="drp-header">
+                <button class="drp-nav-btn drp-prev" type="button">&#8249;</button>
+                <div class="drp-month-year">
+                  <button class="drp-month-btn drp-month-lbl" type="button"></button>
+                  <button class="drp-year-btn drp-year-lbl" type="button"></button>
+                </div>
+                <button class="drp-nav-btn drp-next" type="button">&#8250;</button>
+              </div>
+              <div class="drp-panel drp-month-panel"></div>
+              <div class="drp-panel drp-year-panel"></div>
+              <div class="drp-day-area">
+                <div class="drp-weekdays">${DAYS_SHORT.map(d=>`<span>${d}</span>`).join('')}</div>
+                <div class="drp-days"></div>
+              </div>
+              <div class="drp-status"></div>
+              <div class="drp-footer">
+                <button class="drp-btn-reset" type="button">Resetear</button>
+                <button class="drp-btn-ok" type="button">OK</button>
+              </div>
+            </div>`;
+          
+          overlay.classList.add('open');
+          
+          const card       = overlay.querySelector('.drp-popup');
+          const monthLbl   = overlay.querySelector('.drp-month-lbl');
+          const yearLbl    = overlay.querySelector('.drp-year-lbl');
+          const prevBtn    = overlay.querySelector('.drp-prev');
+          const nextBtn    = overlay.querySelector('.drp-next');
+          const daysEl     = overlay.querySelector('.drp-days');
+          const dayArea    = overlay.querySelector('.drp-day-area');
+          const monthPanel = overlay.querySelector('.drp-month-panel');
+          const yearPanel  = overlay.querySelector('.drp-year-panel');
+          const statusEl   = overlay.querySelector('.drp-status');
+          const resetBtn   = overlay.querySelector('.drp-btn-reset');
+          const okBtn      = overlay.querySelector('.drp-btn-ok');
+
+          function updateHeader() {
+            monthLbl.textContent = MES_ES[viewMonth];
+            yearLbl.textContent  = viewYear;
+          }
+
+          function updateStatus() {
+            if (!selStart && !selEnd) {
+              statusEl.innerHTML = 'Selecciona la <span class="drp-start-lbl">fecha de inicio</span>';
+            } else if (selStart && !selEnd) {
+              statusEl.innerHTML = `<span class="drp-start-lbl">Inicio: ${selStart.getDate()} ${MES_ES_SHORT[selStart.getMonth()]} ${selStart.getFullYear()}</span><span class="drp-arrow"> → </span>Selecciona la <span class="drp-end-lbl">fecha fin</span>`;
+            } else {
+              statusEl.innerHTML = `<span class="drp-start-lbl">Inicio: ${selStart.getDate()} ${MES_ES_SHORT[selStart.getMonth()]} ${selStart.getFullYear()}</span><span class="drp-arrow"> → </span><span class="drp-end-lbl">Fin: ${selEnd.getDate()} ${MES_ES_SHORT[selEnd.getMonth()]} ${selEnd.getFullYear()}</span>`;
+            }
+            okBtn.disabled = !(selStart && selEnd);
+          }
+
+          function renderDays() {
+            daysEl.innerHTML = '';
+            const firstDay = new Date(viewYear, viewMonth, 1).getDay();
+            const offset = (firstDay + 6) % 7;
+            const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+
+            for (let i = 0; i < offset; i++) {
+              const empty = document.createElement('button');
+              empty.className = 'drp-day drp-day-empty';
+              empty.setAttribute('type', 'button');
+              daysEl.appendChild(empty);
+            }
+
+            for (let d = 1; d <= daysInMonth; d++) {
+              const date = new Date(viewYear, viewMonth, d);
+              const btn  = document.createElement('button');
+              btn.setAttribute('type', 'button');
+              btn.className = 'drp-day';
+              btn.textContent = d;
+
+              const isStart = selStart && date.toDateString() === selStart.toDateString();
+              const isEnd   = selEnd   && date.toDateString() === selEnd.toDateString();
+              const inRange = selStart && selEnd && date > selStart && date < selEnd;
+
+              if (isStart) btn.classList.add('drp-day-start');
+              if (isEnd)   btn.classList.add('drp-day-end');
+              if (inRange) btn.classList.add('drp-day-in-range');
+
+              btn.addEventListener('click', () => onDayClick(date));
+              daysEl.appendChild(btn);
+            }
+          }
+
+          function renderMonthPanel() {
+            monthPanel.innerHTML = '';
+            MES_ES.forEach((m, i) => {
+              const btn = document.createElement('button');
+              btn.setAttribute('type', 'button');
+              btn.className = 'drp-panel-item' + (i === viewMonth ? ' active' : '');
+              btn.textContent = m;
+              btn.addEventListener('click', () => { viewMonth = i; showMode('days'); });
+              monthPanel.appendChild(btn);
+            });
+          }
+
+          function renderYearPanel() {
+            yearPanel.innerHTML = '';
+            for (let y = MIN_YEAR; y <= MAX_YEAR; y++) {
+              const btn = document.createElement('button');
+              btn.setAttribute('type', 'button');
+              btn.className = 'drp-panel-item' + (y === viewYear ? ' active' : '');
+              btn.textContent = y;
+              btn.addEventListener('click', () => { viewYear = y; showMode('days'); });
+              yearPanel.appendChild(btn);
+            }
+          }
+
+          function showMode(m) {
+            mode = m;
+            dayArea.style.display    = (m === 'days')   ? '' : 'none';
+            monthPanel.classList.toggle('open', m === 'months');
+            yearPanel.classList.toggle('open',  m === 'years');
+            prevBtn.style.visibility = (m === 'days') ? 'visible' : 'hidden';
+            nextBtn.style.visibility = (m === 'days') ? 'visible' : 'hidden';
+            updateHeader();
+            if (m === 'months') renderMonthPanel();
+            if (m === 'years')  renderYearPanel();
+            if (m === 'days')   renderDays();
+          }
+
+          function onDayClick(date) {
+            if (step === 0) {
+              selStart = date; selEnd = null; step = 1;
+            } else {
+              if (date < selStart) { selEnd = selStart; selStart = date; }
+              else { selEnd = date; }
+              step = 0;
+            }
+            renderDays(); updateStatus();
+          }
+
+          prevBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            viewMonth--;
+            if (viewMonth < 0) { viewMonth = 11; viewYear--; }
+            if (viewYear < MIN_YEAR) { viewYear = MIN_YEAR; viewMonth = 0; }
+            renderDays(); updateHeader();
+          });
+          nextBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            viewMonth++;
+            if (viewMonth > 11) { viewMonth = 0; viewYear++; }
+            if (viewYear > MAX_YEAR) { viewYear = MAX_YEAR; viewMonth = 11; }
+            renderDays(); updateHeader();
+          });
+
+          monthLbl.addEventListener('click', (e) => { e.stopPropagation(); showMode(mode === 'months' ? 'days' : 'months'); });
+          yearLbl.addEventListener('click',  (e) => { e.stopPropagation(); showMode(mode === 'years'  ? 'days' : 'years'); });
+
+          resetBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            selStart = null; selEnd = null; step = 0;
+            renderDays(); updateStatus();
+          });
+
+          okBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!selStart || !selEnd) return;
+            hiddenStart.value = fmtDate(selStart);
+            hiddenEnd.value   = fmtDate(selEnd);
+            trigger.querySelector('.drp-label').textContent = buildLabel(selStart, selEnd);
+            overlay.classList.remove('open');
+            overlay.innerHTML = ''; // Limpiar contenido al cerrar
+            const fc = document.getElementById('filter-form');
+            if (fc) fc.dispatchEvent(new Event('drp:changed', { bubbles: true }));
+          });
+
+          overlay.onclick = (e) => {
+            if (e.target === overlay) {
+              overlay.classList.remove('open');
+              overlay.innerHTML = '';
+            }
+          };
+
+          showMode('days');
+          updateStatus();
+        }
+
+        // Abrir al hacer clic en el disparador
+        trigger.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          openPicker();
+        });
+
+        // Inicializar etiqueta con valores existentes
+        trigger.querySelector('.drp-label').textContent = buildLabel(selStart, selEnd);
+      }
+
+      // Inicialización — evita doble carga con una bandera en el elemento
+      function initPickers() {
+        document.querySelectorAll('[data-drp-trigger]').forEach(trigger => {
+          if (trigger._drpReady) return; 
+          trigger._drpReady = true;
+
+          const hs = document.getElementById(trigger.dataset.drpStart);
+          const he = document.getElementById(trigger.dataset.drpEnd);
+          if (hs && he) {
+            // Eliminar overlays huérfanos si existen (limpieza ante recargas parciales de Turbo)
+            const oldOverlays = document.querySelectorAll('.drp-popup-overlay');
+            if (oldOverlays.length > 5) { // Umbral de seguridad
+              oldOverlays.forEach((o, i) => { if (i < oldOverlays.length - 1) o.remove(); });
+            }
+            createPicker(trigger, hs, he);
+          }
+        });
+      }
+
+      // turbo:load se dispara tanto en la carga inicial como en navegaciones de Turbo.
+      // DOMContentLoaded no es necesario aquí porque turbo:load lo supera.
+      document.addEventListener('turbo:load', initPickers);
+      // Respaldo para páginas sin Turbo
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initPickers);
+      } else {
+        initPickers();
+      }
+    })();
+    console.log("Módulos de Date Range Picker y Stimulus ejecutados");
+    // ===== FIN DEL MÓDULO SELECTOR DE RANGO DE FECHAS =====
+
   </script>
+
+
 
   <style>
     *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
@@ -1061,8 +1364,9 @@
       align-items: center;
       justify-content: center;
       color: var(--accent-blue);
+      pointer-events: none; /* Seguridad: No bloquea clics cuando display:none no funciona */
     }
-    #global-loader.active { display: flex; }
+    #global-loader.active { display: flex; pointer-events: auto; }
     
     .spinner {
       width: 50px; height: 50px;
@@ -1149,7 +1453,7 @@
       from { transform: translateX(0); opacity: 1; }
       to { transform: translateX(120%); opacity: 0; }
     }
-    /* Custom Multiselect Dropdown */
+    /* Dropdown Multiselección Personalizado */
     .multiselect-container {
       position: relative; width: 100%;
     }
@@ -1198,16 +1502,167 @@
         padding: 12px 10px; /* Más espacio para dedos */
       }
     }
+
+    /* ===== SELECTOR DE RANGO DE FECHAS (DATE RANGE PICKER) ===== */
+    .drp-trigger {
+      padding: 6px 10px; background: var(--bg-secondary);
+      border: 1px solid var(--border-color); border-radius: 4px;
+      cursor: pointer; display: flex; justify-content: space-between;
+      align-items: center; min-height: 38px; font-size: 0.85rem;
+      color: var(--text-primary); width: 100%; transition: var(--transition);
+      font-family: 'Inter', sans-serif;
+    }
+    .drp-trigger:hover { border-color: var(--accent-blue); }
+    .drp-trigger .drp-label { flex: 1; text-align: left; }
+    .drp-trigger svg { flex-shrink: 0; margin-left: 6px; color: var(--text-muted); }
+
+    /* Capa de fondo del popup + tarjeta cargada */
+    .drp-popup-overlay {
+      display: none; position: fixed; inset: 0;
+      z-index: 2000; background: rgba(0,0,0,0.45); backdrop-filter: blur(2px);
+      align-items: center; justify-content: center;
+      pointer-events: none;
+    }
+    .drp-popup-overlay.open { 
+      display: flex; animation: fadeInPop 0.18s ease; 
+      pointer-events: auto;
+    }
+    @keyframes fadeInPop {
+      from { opacity: 0; transform: scale(0.96); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+    .drp-popup {
+      background: var(--bg-card); border: 1px solid var(--border-color);
+      border-radius: 14px; padding: 20px;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(0,212,255,0.08);
+      min-width: 300px; max-width: 340px; width: 94vw;
+      font-family: 'Inter', sans-serif;
+    }
+
+    /* Navegación del encabezado */
+    .drp-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .drp-nav-btn {
+      background: none; border: none; color: var(--text-secondary); cursor: pointer;
+      padding: 4px 8px; border-radius: 6px; transition: var(--transition);
+      font-size: 1rem; line-height: 1;
+    }
+    .drp-nav-btn:hover { background: rgba(0,212,255,0.1); color: var(--accent-cyan); }
+    .drp-month-year {
+      display: flex; gap: 6px; align-items: center;
+    }
+    .drp-month-btn, .drp-year-btn {
+      background: none; border: none; cursor: pointer; font-family: 'Inter', sans-serif;
+      font-size: 0.95rem; font-weight: 700; color: var(--text-primary);
+      border-radius: 6px; padding: 4px 8px; transition: var(--transition);
+    }
+    .drp-month-btn:hover, .drp-year-btn:hover {
+      background: rgba(0,212,255,0.12); color: var(--accent-cyan);
+    }
+
+    /* Cuadrícula de días */
+    .drp-weekdays {
+      display: grid; grid-template-columns: repeat(7, 1fr);
+      margin-bottom: 4px;
+    }
+    .drp-weekdays span {
+      text-align: center; font-size: 0.68rem; font-weight: 700;
+      color: var(--text-muted); text-transform: uppercase; padding: 4px 0;
+    }
+    .drp-days {
+      display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px;
+    }
+    .drp-day {
+      text-align: center; padding: 7px 2px; font-size: 0.83rem;
+      border-radius: 6px; cursor: pointer; color: var(--text-primary);
+      transition: background 0.15s, color 0.15s; position: relative; z-index: 1;
+      border: none; background: none; font-family: 'Inter', sans-serif;
+    }
+    .drp-day:hover:not(.drp-day-empty):not(.drp-day-disabled) {
+      background: rgba(0,212,255,0.15); color: var(--accent-cyan);
+    }
+    .drp-day-empty { cursor: default; }
+    .drp-day-disabled { color: var(--text-muted); cursor: not-allowed; opacity: 0.4; }
+    .drp-day-in-range {
+      background: rgba(11,197,234,0.12); border-radius: 0;
+    }
+    .drp-day-in-range:first-child, .drp-day-start + .drp-day-in-range { border-radius: 6px 0 0 6px; }
+    .drp-day-start {
+      background: var(--accent-cyan) !important; color: #0f1323 !important;
+      font-weight: 700; border-radius: 6px;
+    }
+    .drp-day-end {
+      background: var(--accent-green) !important; color: #0f1323 !important;
+      font-weight: 700; border-radius: 6px;
+    }
+    .drp-day-start.drp-day-end {
+      background: var(--accent-blue) !important;
+    }
+
+    /* Panel de Mes / Año (se muestra en lugar de la cuadrícula de días) */
+    .drp-panel {
+      display: none; grid-template-columns: repeat(3, 1fr); gap: 6px;
+      margin-bottom: 4px;
+    }
+    .drp-panel.open { display: grid; }
+    .drp-panel-item {
+      text-align: center; padding: 9px 4px; font-size: 0.82rem;
+      border-radius: 8px; cursor: pointer; color: var(--text-primary);
+      transition: background 0.15s, color 0.15s;
+      border: 1px solid transparent; font-family: 'Inter', sans-serif;
+      background: none;
+    }
+    .drp-panel-item:hover { background: rgba(0,212,255,0.12); color: var(--accent-cyan); }
+    .drp-panel-item.active {
+      border-color: var(--accent-cyan); color: var(--accent-cyan);
+      background: rgba(0,212,255,0.1);
+    }
+    .drp-panel-item.disabled { color: var(--text-muted); cursor: not-allowed; opacity: 0.4; }
+
+    /* Línea de estado */
+    .drp-status {
+      margin-top: 10px; font-size: 0.78rem; color: var(--text-secondary);
+      min-height: 20px; text-align: center;
+    }
+    .drp-status .drp-start-lbl { color: var(--accent-cyan); font-weight: 600; }
+    .drp-status .drp-end-lbl   { color: var(--accent-green); font-weight: 600; }
+    .drp-status .drp-arrow     { color: var(--text-muted); margin: 0 4px; }
+
+    /* Botones del pie de página */
+    .drp-footer {
+      display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px;
+      border-top: 1px solid var(--border-color); padding-top: 12px;
+    }
+    .drp-btn-reset {
+      background: none; border: 1px solid var(--border-color); color: var(--text-secondary);
+      border-radius: 6px; padding: 6px 14px; font-size: 0.82rem; cursor: pointer;
+      font-family: 'Inter', sans-serif; transition: var(--transition);
+    }
+    .drp-btn-reset:hover { border-color: var(--accent-orange); color: var(--accent-orange); }
+    .drp-btn-ok {
+      background: rgba(0,212,255,0.15); border: 1px solid var(--accent-blue);
+      color: var(--accent-blue); border-radius: 6px; padding: 6px 22px;
+      font-size: 0.82rem; font-weight: 700; cursor: pointer;
+      font-family: 'Inter', sans-serif; transition: var(--transition);
+    }
+    .drp-btn-ok:hover {
+      background: var(--accent-blue); color: #0f1323;
+      box-shadow: 0 0 14px rgba(0,212,255,0.35);
+    }
+    .drp-btn-ok:disabled { opacity: 0.4; cursor: not-allowed; }
+    /* ===== FIN DEL SELECTOR DE RANGO DE FECHAS ===== */
   </style>
 </head>
 <body>
-  <!-- Loader Overlay -->
+  <!-- Capa de Carga Global -->
   <div id="global-loader">
     <div class="spinner"></div>
     <div class="loading-text">Cargando Datos...</div>
   </div>
 
-  <!-- Toast Container -->
+  <!-- Contenedor de Notificaciones (Toasts) -->
   <div id="toast-container" class="toast-container">
     <% if flash[:error_detail] %>
       <div class="toast toast-error" 
@@ -1230,27 +1685,51 @@
   </div>
 
   <script>
-    // Mostrar loader en navegación Turbo
+    // Mostrar loader en navegación Turbo usando la función global con timeout
     document.addEventListener("turbo:visit", () => {
-      document.getElementById("global-loader").classList.add("active");
+      if (window.showLoader) window.showLoader();
     });
     
     // Escuchar cuando Turbo termina de cargar para ocultar el cargador
     document.addEventListener("turbo:load", () => {
-      document.getElementById("global-loader").classList.remove("active");
+      if (window.hideLoader) window.hideLoader();
     });
 
     // Función global para mostrar el cargador manualmente
     window.showLoader = function() {
-      document.getElementById("global-loader").classList.add("active");
+      const loader = document.getElementById("global-loader");
+      if (loader) {
+        loader.classList.add("active");
+        // Failsafe: ocultar tras 5 segundos si algo falla
+        clearTimeout(window.loaderTimeout);
+        window.loaderTimeout = setTimeout(window.hideLoader, 5000);
+      }
     };
     
     // Función global para ocultar el cargador manualmente
     window.hideLoader = function() {
-      document.getElementById("global-loader").classList.remove("active");
+      const loader = document.getElementById("global-loader");
+      if (loader) loader.classList.remove("active");
+      clearTimeout(window.loaderTimeout);
+    };
+
+    // Monitoreo de errores JS globales para retroalimentación visual
+    window.onerror = function(message, source, lineno, colno, error) {
+      const msg = `Error JS: ${message} en ${source}:${lineno}`;
+      console.error(msg, error);
+      // Intentar mostrar como toast si el controlador dashboard está cargado
+      const dash = document.querySelector('[data-controller="dashboard"]');
+      if (dash) {
+        const controller = application.getControllerForElementAndIdentifier(dash, "dashboard");
+        if (controller) controller.showToast(msg, 'error');
+      }
+      return false;
     };
   </script>
 
   <%= yield %>
+
+  <!-- Capa Estática para el Datepicker -->
+  <div class="drp-popup-overlay" id="main-drp-overlay"></div>
 </body>
 </html>

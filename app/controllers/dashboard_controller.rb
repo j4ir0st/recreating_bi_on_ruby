@@ -49,7 +49,7 @@ class DashboardController < ApplicationController
   rescue UnauthorizedError
     render json: { error: "Sesión expirada. Por favor inicia sesión nuevamente." }, status: :unauthorized
   rescue => e
-    Rails.logger.error("AUDIT ACTION ERROR: #{e.class}: #{e.message}\n#{e.backtrace.first(10).join("\n")}")
+    Rails.logger.error("ERROR EN ACCIÓN AUDIT: #{e.class}: #{e.message}\n#{e.backtrace.first(10).join("\n")}")
     render json: { error: "Error en Historial: #{e.class} - #{e.message}" }, status: :internal_server_error
   end
 
@@ -69,7 +69,7 @@ class DashboardController < ApplicationController
     )
     render json: { records: result[:records], has_more: result[:has_more], page: page }
   rescue => e
-    Rails.logger.error("AUDIT DATA ERROR: #{e.message}")
+    Rails.logger.error("ERROR EN DATOS AUDIT: #{e.message}")
     render json: { error: e.message }, status: :internal_server_error
   end
 
@@ -80,7 +80,7 @@ class DashboardController < ApplicationController
   rescue UnauthorizedError
     render json: { error: "Sesión expirada. Por favor inicia sesión nuevamente." }, status: :unauthorized
   rescue => e
-    Rails.logger.error("SUPERVISOR ACTION ERROR: #{e.class}: #{e.message}\n#{e.backtrace.first(5).join("\n")}")
+    Rails.logger.error("ERROR EN ACCIÓN SUPERVISOR: #{e.class}: #{e.message}\n#{e.backtrace.first(5).join("\n")}")
     render json: { error: "Error en Supervisor: #{e.message}" }, status: :internal_server_error
   end
 
@@ -104,7 +104,7 @@ class DashboardController < ApplicationController
 
   def mass_update_commissions
     updates = params[:updates] || []
-    Rails.logger.info("=== MASS UPDATE START: #{updates.size} cambios recibidos ===")
+    Rails.logger.info("=== INICIO ACTUALIZACIÓN MASIVA: #{updates.size} cambios recibidos ===")
     client = ApiClient.new(session[:api_token])
     
     success_count = 0
@@ -126,7 +126,7 @@ class DashboardController < ApplicationController
       end
     end
 
-    Rails.logger.info("=== MASS UPDATE: #{success_count} éxitos, #{errors.size} errores ===")
+    Rails.logger.info("=== ACTUALIZACIÓN MASIVA: #{success_count} éxitos, #{errors.size} errores ===")
 
     # Crear auditoría si al menos una comisión fue actualizada exitosamente
     if success_count > 0
@@ -177,13 +177,13 @@ class DashboardController < ApplicationController
     requested_codes = params[:codes].to_s.split(',').map(&:strip).reject(&:empty?)
     return render json: {} if requested_codes.empty?
 
-    Rails.logger.info("=== PRODUCTS JSON: #{requested_codes.length} codes: #{requested_codes.first(5).inspect} ===")
+    Rails.logger.info("=== PRODUCTOS JSON: #{requested_codes.length} códigos: #{requested_codes.first(5).inspect} ===")
 
     products_map = Rails.cache.fetch("prod_batch_v3_#{requested_codes.sort.join(',')}", expires_in: 24.hours) do
       client.fetch_products_by_codes(requested_codes)
     end
 
-    Rails.logger.info("=== PRODUCTS JSON result: #{products_map.length} descriptions found ===")
+    Rails.logger.info("=== PRODUCTOS JSON resultado: #{products_map.length} descripciones encontradas ===")
 
     missing = requested_codes - products_map.keys
     missing.each do |code|
@@ -200,7 +200,7 @@ class DashboardController < ApplicationController
   private
 
   def handle_unexpected_error(exception)
-    Rails.logger.error("DASHBOARD ERROR: #{exception.message}\n#{exception.backtrace.first(10).join("\n")}")
+    Rails.logger.error("ERROR DASHBOARD: #{exception.message}\n#{exception.backtrace.first(10).join("\n")}")
     
     error_msg = "Error inesperado: #{exception.message}"
     
@@ -273,7 +273,7 @@ class DashboardController < ApplicationController
     redirect_to login_path, alert: "Tu sesión ha expirado."
     return false
   rescue => e
-    Rails.logger.error("PREPARE SUPERVISOR ERROR: #{e.message}")
+    Rails.logger.error("ERROR PREPARAR SUPERVISOR: #{e.message}")
     @supervisor_rows = []
     true # Mostrar vacío en lugar de explotar
   end
@@ -327,28 +327,43 @@ class DashboardController < ApplicationController
       start_date = nil
       end_date = nil
 
-      if @selected_months.empty? || @selected_months.include?("Todas")
-        # Sin filtro de mes: rango completo de todos los años seleccionados
-        min_year = @selected_years.map(&:to_i).min
-        max_year = @selected_years.map(&:to_i).max
-        start_date = Date.new(min_year - 1, 12, 24)
-        end_date   = Date.new(max_year, 12, 23)
-      else
-        # Lógica 24->23: el rango de facturas va del 24 del mes anterior al 23 del mes seleccionado
-        parsed_months = @selected_months.map { |m| Date.strptime(m, "%Y-%m") rescue nil }.compact.sort
-        if parsed_months.any?
-          first_month = parsed_months.first
-          last_month = parsed_months.last
-          # Inicio: día 24 del mes anterior al primer mes seleccionado
-          start_date = Date.new(first_month.year, first_month.month, 1) << 1
-          start_date = Date.new(start_date.year, start_date.month, 24)
-          # Fin: día 23 del último mes seleccionado
-          end_date = Date.new(last_month.year, last_month.month, 23)
-        else
+      # Prioridad: rango personalizado (date_start / date_end) del date range picker
+      if params[:date_start].present? && params[:date_end].present?
+        begin
+          start_date = Date.parse(params[:date_start])
+          end_date   = Date.parse(params[:date_end])
+          # Con rango manual se omite el filtro en memoria de meses
+          @selected_months = []
+        rescue ArgumentError
+          # Si las fechas no son válidas, caemos al comportamiento por defecto
+        end
+      end
+
+      unless start_date && end_date
+        # Solo calculamos rango si NO vino del DateRangePicker
+        if @selected_months.empty? || @selected_months.include?("Todas")
+          # Sin filtro de mes ni rango: rango completo de todos los años seleccionados
           min_year = @selected_years.map(&:to_i).min
           max_year = @selected_years.map(&:to_i).max
           start_date = Date.new(min_year - 1, 12, 24)
           end_date   = Date.new(max_year, 12, 23)
+        else
+          # Lógica 24->23: el rango de facturas va del 24 del mes anterior al 23 del mes seleccionado
+          parsed_months = @selected_months.map { |m| Date.strptime(m, "%Y-%m") rescue nil }.compact.sort
+          if parsed_months.any?
+            first_month = parsed_months.first
+            last_month = parsed_months.last
+            # Inicio: día 24 del mes anterior al primer mes seleccionado
+            start_date = Date.new(first_month.year, first_month.month, 1) << 1
+            start_date = Date.new(start_date.year, start_date.month, 24)
+            # Fin: día 23 del último mes seleccionado
+            end_date = Date.new(last_month.year, last_month.month, 23)
+          else
+            min_year = @selected_years.map(&:to_i).min
+            max_year = @selected_years.map(&:to_i).max
+            start_date = Date.new(min_year - 1, 12, 24)
+            end_date   = Date.new(max_year, 12, 23)
+          end
         end
       end
 

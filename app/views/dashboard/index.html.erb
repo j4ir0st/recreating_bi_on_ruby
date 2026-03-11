@@ -36,33 +36,24 @@
             </div>
           </div>
         </div>
-          <!-- Filtro Meses (Custom Multiselect) -->
-          <div class="filter-group" style="flex: 1; min-width: 180px;">
-            <label>Meses</label>
-            <div class="multiselect-container">
-              <%
-                selected_label = if @selected_months.empty? || @selected_months.include?("Todas")
-                  "Todas"
-                elsif @selected_months.length > 2
-                  "#{@selected_months.length} Meses"
-                else
-                  @selected_months.map { |s| mes_label(s) }.join(', ')
-                end
-              %>
-              <div class="multiselect-trigger" data-action="click->dashboard#toggleDropdown">
-                <span><%= selected_label %></span>
-                <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2"/></svg>
-              </div>
-              <div class="multiselect-dropdown">
-                <% (@dates || []).each_with_index do |month, i| %>
-                  <div class="multiselect-option">
-                    <input type="checkbox" name="date_range[]" value="<%= month %>" id="month_<%= i %>" 
-                           <%= 'checked' if @selected_months.include?(month) %>>
-                    <label for="month_<%= i %>"><%= mes_label(month) %></label>
-                  </div>
-                <% end %>
-              </div>
-            </div>
+          <!-- Filtro Rango de Fechas (Date Range Picker) -->
+          <div class="filter-group" style="flex: 1; min-width: 200px;">
+            <label>Rango de Fechas</label>
+            <button type="button" class="drp-trigger"
+                    data-drp-trigger
+                    data-drp-start="drp-date-start"
+                    data-drp-end="drp-date-end">
+              <span class="drp-label">Rango de fechas</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                <line x1="16" y1="2" x2="16" y2="6"/>
+                <line x1="8" y1="2" x2="8" y2="6"/>
+                <line x1="3" y1="10" x2="21" y2="10"/>
+              </svg>
+            </button>
+            <!-- Hidden inputs that carry date_start / date_end in the form -->
+            <input type="hidden" id="drp-date-start" name="date_start" value="<%= params[:date_start] %>">
+            <input type="hidden" id="drp-date-end"   name="date_end"   value="<%= params[:date_end] %>">
           </div>
 
           <!-- Filtro Vendedores (Custom Multiselect) -->

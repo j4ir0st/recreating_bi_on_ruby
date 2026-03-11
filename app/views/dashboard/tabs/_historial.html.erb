@@ -50,7 +50,7 @@
       <tbody id="audit-tbody">
         <% if (audit_history[:records] || []).empty? %>
           <tr>
-            <td colspan="6" class="text-center" style="padding: 40px; color: var(--text-muted);">
+            <td colspan="8" class="text-center" style="padding: 40px; color: var(--text-muted);">
               No hay registros de auditoría disponibles.
             </td>
           </tr>
@@ -258,7 +258,7 @@ function exportAuditToExcel() {
 
       if (data.error) {
         tbody.insertAdjacentHTML('beforeend',
-          '<tr><td colspan="5" class="text-center" style="color:var(--accent-orange);">' + data.error + '</td></tr>');
+          '<tr><td colspan="8" class="text-center" style="color:var(--accent-orange);">' + data.error + '</td></tr>');
         return;
       }
 
@@ -287,7 +287,7 @@ function exportAuditToExcel() {
     auditPage = 1;
     auditHasMore = true;
     auditLoading = false;
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center" style="padding:20px;color:var(--text-muted);">Buscando...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center" style="padding:20px;color:var(--text-muted);">Buscando...</td></tr>';
     endEl.style.display = 'none';
 
     fetch(buildUrl(1), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
@@ -297,19 +297,21 @@ function exportAuditToExcel() {
       var records = data.records || [];
       tbody.innerHTML = '';
       if (records.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center" style="padding:40px;color:var(--text-muted);">Sin resultados</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center" style="padding:40px;color:var(--text-muted);">Sin resultados</td></tr>';
       } else {
         records.forEach(function(a) { tbody.insertAdjacentHTML('beforeend', renderRow(a)); });
       }
       endEl.style.display = auditHasMore ? 'none' : 'block';
     })
-    .catch(function(err) { console.error('Filter reload error:', err); });
+    .catch(function(err) { console.error('Error al recargar filtros:', err); });
   }
 
   // Escuchar evento de filtros desde index.html.erb
-  document.addEventListener('historial:filter', function(e) {
+  function handleFilterEvent(e) {
     reloadWithFilters(e.detail.comprobantes, e.detail.usuario);
-  });
+  }
+  document.removeEventListener('historial:filter', handleFilterEvent);
+  document.addEventListener('historial:filter', handleFilterEvent);
 
   // Detectar scroll al fondo de la tabla
   if (wrapper) {

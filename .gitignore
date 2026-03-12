@@ -10,6 +10,8 @@
 # Ignorar logs y archivos temporales.
 /log/*
 /tmp/*
+tmp/
+./tmp/
 !/log/.keep
 !/tmp/.keep
 

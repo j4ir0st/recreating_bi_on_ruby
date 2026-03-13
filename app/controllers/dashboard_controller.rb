@@ -243,7 +243,7 @@ class DashboardController < ApplicationController
     @selected_year = @selected_years.sort.last
     @selected_months = []
     @selected_vendors = []
-    @selected_cancelado = "Todo"
+    @selected_cancelado = "S"
     @years = ([Date.today.year, 2025].max).downto(2025).map(&:to_s).reverse
     @dates = (1..12).map { |m| "#{@selected_year}-#{m.to_s.rjust(2, '0')}" }
     @vendors = []
@@ -285,7 +285,7 @@ class DashboardController < ApplicationController
     @selected_years = raw_years.is_a?(Array) ? raw_years.reject(&:blank?) : [raw_years.to_s].reject(&:blank?)
     @selected_years = [Date.today.year.to_s] if @selected_years.empty?
     @selected_year = @selected_years.sort.last
-    @selected_cancelado = params[:cancelado] || "Todo"
+    @selected_cancelado = params[:cancelado] || "S"
 
     raw_months = params[:date_range] || []
     @selected_months = raw_months.is_a?(Array) ? raw_months : [raw_months].reject(&:blank?)

@@ -85,7 +85,7 @@
           <div class="filter-group" style="flex: 1; min-width: 120px;">
             <label>Cancelado</label>
             <select name="cancelado" data-dashboard-target="canceladoSelect" data-action="change->dashboard#filterChanged">
-              <option value="Todo" <%= 'selected' if @selected_cancelado == 'Todo' %>>Todo</option>
+              <%# <option value="Todo" <%= 'selected' if @selected_cancelado == 'Todo' # }>Todo</option> %> 
               <option value="S" <%= 'selected' if @selected_cancelado == 'S' %>>S</option>
               <option value="N" <%= 'selected' if @selected_cancelado == 'N' %>>N</option>
             </select>

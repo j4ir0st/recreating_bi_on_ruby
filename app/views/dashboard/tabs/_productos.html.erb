@@ -112,7 +112,7 @@
               <strong style="color: var(--accent-cyan);">S/ <%= number_with_precision(item[:comision_soles].to_f, precision: 2, separator: '.', delimiter: ',') %></strong>
             </td>
             <td class="text-center" 
-                style="display: none; vertical-align: middle; <%= 'background: rgba(0,0,0,0.2);' if item[:cancelado] != 'S' %>" 
+                style="display: none; vertical-align: middle; <%= 'background: rgba(0,0,0,0.2);' if item[:cancelado] != 'S' && item[:tipo_cliente].to_s.include?('PUBLICO') %>" 
                 data-dashboard-target="commissionColumn">
               <input type="checkbox" 
                      class="commission-checkbox" 
@@ -123,9 +123,9 @@
                      data-vendor="<%= item[:vendedor] %>"
                      data-action="change->dashboard#onItemCheckboxChange"
                      <%= 'checked' if item[:comision_pagada] %>
-                     <%= 'disabled' if item[:cancelado] != 'S' %>
-                     style="<%= 'opacity: 0.4; cursor: not-allowed;' if item[:cancelado] != 'S' %>"
-                     title="<%= 'Solo se puede pagar si la factura está cancelada (CAN=S)' if item[:cancelado] != 'S' %>">
+                     <%= 'disabled' if item[:cancelado] != 'S' && item[:tipo_cliente].to_s.include?('PUBLICO') %>
+                     style="<%= 'opacity: 0.4; cursor: not-allowed;' if item[:cancelado] != 'S' && item[:tipo_cliente].to_s.include?('PUBLICO') %>"
+                     title="<%= 'Solo se puede pagar si la factura está cancelada (CAN=S)' if item[:cancelado] != 'S' && item[:tipo_cliente].to_s.include?('PUBLICO') %>">
             </td>
           </tr>
         <% end %>

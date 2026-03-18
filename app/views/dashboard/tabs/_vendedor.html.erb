@@ -37,8 +37,8 @@
           <th style="width: 55px;" class="text-center" title="Comisión Pagada">Pag.</th>
           <th>Producto</th>
           <th class="text-right" style="width: 135px;">Precio (S/)</th>
-          <th class="text-left" style="width: 140px;">Vendedor</th>
-          <th class="text-left" style="width: 160px; display:none;">Nombre Cliente</th>
+          <th class="text-left col-vendedor" style="width: 140px; display: none;">Vendedor</th>
+          <th class="text-left col-cliente" style="width: 160px;">Nombre Cliente</th>
           <th class="text-right" style="width: 135px;">Comisión (S/)</th>
           <th class="text-right" style="width: 110px; display: none; padding-right: 16px;" data-dashboard-target="commissionColumn">
             <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
@@ -82,10 +82,10 @@
               <td class="text-right" style="white-space: nowrap; font-weight: 600; font-variant-numeric: tabular-nums;">
                 S/ <%= number_with_precision(item[:precio_soles].to_f, precision: 2, separator: '.', delimiter: ',') %>
               </td>
-              <td class="text-left">
+              <td class="text-left col-vendedor" style="display: none;">
                 <%= item[:vendedor] %>
               </td>
-              <td class="text-left" style="display:none;">
+              <td class="text-left col-cliente">
                 <%= item[:nombre_cliente] %>
               </td>
               <td class="text-right" style="white-space: nowrap; font-variant-numeric: tabular-nums;">

@@ -193,8 +193,17 @@ class DashboardController < ApplicationController
       end
       products_map[code] = desc if desc.present?
     end
-
     render json: products_map
+  end
+
+  # Endpoint para refrescar caché de tablas de comisiones a demanda
+  def refresh_cache
+    keys = ["repr_comisiones", "repr_comisiones_v2", "repr_comisiones_sup", "repr_comisiones_keys", "repr_comisiones_prod"]
+    keys.each { |key| Rails.cache.delete(key) }
+    render json: { success: true, message: "Tablas de comisiones actualizadas correctamente." }
+  rescue => e
+    Rails.logger.error("ERROR REFRESH CACHE: #{e.message}")
+    render json: { success: false, error: e.message }, status: :internal_server_error
   end
 
   private
@@ -220,7 +229,7 @@ class DashboardController < ApplicationController
 
   def load_filters_only(client = nil)
     client ||= ApiClient.new(session[:api_token])
-    @commissions = Rails.cache.fetch("repr_comisiones", expires_in: 1.hour) do
+    @commissions = Rails.cache.fetch("repr_comisiones", expires_in: 24.hours) do
       client.fetch_commissions
     end
     @vendors = @commissions.map { |c| c[:nombre].to_s.strip }.compact.uniq.reject { |v| v.upcase == "OFICINA" }.sort
@@ -256,12 +265,12 @@ class DashboardController < ApplicationController
     client = ApiClient.new(session[:api_token])
 
     # 1. Cargar bases (Representantes y sus mapeos)
-    @commissions = Rails.cache.fetch("repr_comisiones_v2", expires_in: 1.hour) { client.fetch_commissions }
+    @commissions = Rails.cache.fetch("repr_comisiones_v2", expires_in: 24.hours) { client.fetch_commissions }
     @commissions_map = (@commissions || []).index_by { |c| c[:nombre].to_s.strip.upcase }
     @vendors = (@commissions || []).map { |c| c[:nombre].to_s.strip }.compact.uniq.reject { |v| v.upcase == "OFICINA" }.sort
 
-    supervisor_commissions = Rails.cache.fetch("repr_comisiones_sup", expires_in: 1.hour) { client.fetch_supervisor_commissions }
-    supervisor_keys = Rails.cache.fetch("repr_comisiones_keys", expires_in: 1.hour) { client.fetch_supervisor_keys }
+    supervisor_commissions = Rails.cache.fetch("repr_comisiones_sup", expires_in: 24.hours) { client.fetch_supervisor_commissions }
+    supervisor_keys = Rails.cache.fetch("repr_comisiones_keys", expires_in: 24.hours) { client.fetch_supervisor_keys }
 
     # 2. Generar Filas (con el filtro de comision_pagada)
     pagada_filter = params[:comision_pagada] || "N"
@@ -319,7 +328,7 @@ class DashboardController < ApplicationController
           vendedores_filter: vendedores_filter
         )
         # Carga la lista de vendedores desde caché (no llama a la API si ya está cacheado)
-        @commissions = Rails.cache.fetch("repr_comisiones", expires_in: 1.hour) { client.fetch_commissions }
+        @commissions = Rails.cache.fetch("repr_comisiones", expires_in: 24.hours) { client.fetch_commissions }
         @vendors = (@commissions || []).map { |c| c[:nombre].to_s.strip }.compact.uniq.reject { |v| v.upcase == "OFICINA" }.sort
         return true
       end
@@ -370,11 +379,11 @@ class DashboardController < ApplicationController
       start_date_str = start_date.strftime("%Y-%m-%d")
       end_date_str = end_date.strftime("%Y-%m-%d 23:59:59")
 
-      # Tabla maestra de comisiones (datos que rara vez cambian — cache 7 días)
-      @commissions = Rails.cache.fetch("repr_comisiones", expires_in: 1.day) do
+      # Tabla maestra de comisiones (datos que rara vez cambian — cache 1 hora)
+      @commissions = Rails.cache.fetch("repr_comisiones", expires_in: 24.hours) do
         client.fetch_commissions
       end
-      @product_commissions = Rails.cache.fetch("repr_comisiones_prod", expires_in: 1.day) do
+      @product_commissions = Rails.cache.fetch("repr_comisiones_prod", expires_in: 24.hours) do
         client.fetch_product_commissions
       end
 

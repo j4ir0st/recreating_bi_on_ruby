@@ -388,7 +388,7 @@ class ApiClient
       
       begin
         # Reducimos page_size a 200 para evitar tiempo de espera agotado o exceso de memoria.
-        response = @conn.get("#{endpoint}?format=json&page=#{page}&page_size=200")
+        response = @conn.get("#{endpoint}?format=json&page=#{page}&top=200")
         
         if response.success?
           begin

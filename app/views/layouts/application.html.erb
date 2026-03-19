@@ -134,6 +134,31 @@
           checkbox.style.opacity = '1';
         });
       }
+
+      refreshCache() {
+        if (window.showLoader) window.showLoader();
+        
+        fetch(`${this.basePath}refresh_cache`)
+          .then(r => r.json())
+          .then(data => {
+            if (data.success) {
+              this.showToast(data.message, "success");
+              // Opcional: Recargar la página para ver reflejados los cambios inmediatamente
+              setTimeout(() => {
+                window.location.reload();
+              }, 1500);
+            } else {
+              this.showToast(data.error || "Error al refrescar tablas", "error");
+              if (window.hideLoader) window.hideLoader();
+            }
+          })
+          .catch(err => {
+            console.error("Refresh Cache Error:", err);
+            this.showToast("No se pudo conectar con el servidor", "error");
+            if (window.hideLoader) window.hideLoader();
+          });
+      }
+
         // Seleccionar/Deseleccionar todos en la TABLA actual
         toggleSelectAll(e) {
           const checked = e.target.checked;

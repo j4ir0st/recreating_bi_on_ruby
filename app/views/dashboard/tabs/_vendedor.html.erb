@@ -1,10 +1,67 @@
+<style>
+  .filter-dropdown {
+    display: inline-flex;
+    align-items: center;
+  }
+  .filter-dropdown-content {
+    display: none;
+    position: absolute;
+    background-color: #1e1e1e;
+    min-width: 130px;
+    box-shadow: 0px 8px 24px 0px rgba(0,0,0,0.8);
+    z-index: 9999;
+    border: 1px solid #444;
+    border-radius: 6px;
+    padding: 6px 0;
+    left: 0;
+    top: calc(100% + 5px);
+  }
+  .filter-dropdown-content a {
+    color: #e0e0e0;
+    padding: 10px 16px;
+    text-decoration: none;
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 500;
+    transition: all 0.2s;
+    text-align: left;
+    border-bottom: 1px solid #333;
+  }
+  .filter-dropdown-content a:last-child {
+    border-bottom: none;
+  }
+  .filter-dropdown-content a:hover {
+    background-color: var(--accent-cyan);
+    color: #000;
+  }
+  .filter-dropdown.active .filter-dropdown-content {
+    display: block;
+  }
+  .filter-icon {
+    cursor: pointer;
+    color: var(--accent-cyan);
+    font-size: 0.75rem;
+    padding: 4px;
+    transition: transform 0.2s;
+    display: flex;
+    align-items: center;
+  }
+  .filter-icon:hover {
+    transform: scale(1.2);
+  }
+</style>
+
 <!-- Tab de Vendedor: Resumen o Detalle -->
 <div class="table-section">
   <% if @selected_vendors.any? %>
     <%
-      # Pre-calcular totales por tipo de cliente para los tooltips
-      tipo_cliente_totals = (@vendor_details || []).group_by { |i| i[:tipo_cliente] }.transform_values do |items|
-        items.sum { |i| i[:comision_soles].to_f }
+      # Pre-calcular totales por tipo de cliente y clase para los tooltips
+      items = (@vendor_details || [])
+      tipo_cliente_totals = items.group_by { |i| i[:tipo_cliente] }.transform_values do |grouped_items|
+        grouped_items.sum { |i| i[:comision_soles].to_f }
+      end
+      clase_totals = items.group_by { |i| i[:clase] }.transform_values do |grouped_items|
+        grouped_items.sum { |i| i[:comision_soles].to_f }
       end
     %>
     <!-- VISTA DETALLADA: Items por Factura para el Vendedor Seleccionado -->
@@ -28,13 +85,26 @@
     <table class="data-table">
       <thead>
         <tr>
-          <th style="width: 85px;">Cliente</th>
+          <th style="width: 110px; position: sticky; top: 0; z-index: 20; white-space: nowrap; background: var(--bg-table-header);">
+            <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+              <span style="text-transform: uppercase; font-size: 0.8rem; font-weight: 600; color: var(--text-secondary);">Cliente</span>
+              <div class="filter-dropdown" id="cliente-filter-dropdown">
+                <span class="filter-icon" onclick="toggleClienteFilter(event)">&#9660;</span>
+                <div class="filter-dropdown-content">
+                  <a href="#" onclick="filterByCliente('TODOS', event)">TODOS</a>
+                  <a href="#" onclick="filterByCliente('PRIVADO', event)">PRIVADO</a>
+                  <a href="#" onclick="filterByCliente('PUBLICO', event)">PUBLICO</a>
+                </div>
+              </div>
+            </div>
+          </th>
           <th style="width: 85px; cursor:pointer; user-select:none; white-space:nowrap;" id="vendedor-fecha-th" onclick="toggleVendedorDateSort()">
             Fecha <span id="vendedor-sort-icon" style="font-size:0.7rem; color:var(--accent-cyan);">&#9660;</span>
           </th>
           <th style="width: 120px;">N° Factura</th>
           <th style="width: 55px;" class="text-center">Can.</th>
           <th style="width: 55px;" class="text-center" title="Comisión Pagada">Pag.</th>
+          <th style="width: 55px;" class="text-center">Clase</th>
           <th>Producto</th>
           <th class="text-right" style="width: 135px;">Precio (S/)</th>
           <th class="text-left col-vendedor" style="width: 140px; display: none;">Vendedor</th>
@@ -48,9 +118,9 @@
           </th>
         </tr>
       </thead>
-        <tbody>
+        <tbody id="vendedor-items-body">
           <% (@vendor_details || []).each do |item| %>
-            <tr data-date="<%= item[:fecha_emision] %>">
+            <tr data-date="<%= item[:fecha_emision] %>" data-tipo-cliente="<%= item[:tipo_cliente].to_s.upcase %>">
               <% 
                 tipo = item[:tipo_cliente].to_s
                 total_tipo = tipo_cliente_totals[tipo] || 0
@@ -73,13 +143,25 @@
                   <span class="status-badge status-pending" title="No Pagada">NO</span>
                 <% end %>
               </td>
+              <% 
+                clase_val = item[:clase].to_s.upcase
+                total_clase = clase_totals[item[:clase]] || 0
+                tooltip_clase = clase_val.present? ? "CLASE #{clase_val}: Total = S/. #{number_with_precision(total_clase, precision: 2, separator: '.', delimiter: ',')}" : ""
+              %>
+              <td class="text-center" title="<%= tooltip_clase %>">
+                <% if item[:clase].present? %>
+                  <span class="status-badge clase-<%= item[:clase].downcase %>"><%= item[:clase] %></span>
+                <% else %>
+                  -
+                <% end %>
+              </td>
               <td data-product-code="<%= item[:producto_codigo] %>"
                   style="min-width: 180px; max-width: 220px; white-space: normal; word-break: break-word; vertical-align: top;">
                 <span class="product-name" title="<%= item[:producto_codigo] %>" style="display:block;">
                   <%= item[:producto_codigo] %>
                 </span>
               </td>
-              <td class="text-right" style="white-space: nowrap; font-weight: 600; font-variant-numeric: tabular-nums;">
+              <td class="text-right row-precio" style="white-space: nowrap; font-weight: 600; font-variant-numeric: tabular-nums;">
                 S/ <%= number_with_precision(item[:precio_soles].to_f, precision: 2, separator: '.', delimiter: ',') %>
               </td>
               <td class="text-left col-vendedor" style="display: none;">
@@ -88,7 +170,7 @@
               <td class="text-left col-cliente">
                 <%= item[:nombre_cliente] %>
               </td>
-              <td class="text-right" style="white-space: nowrap; font-variant-numeric: tabular-nums;">
+              <td class="text-right row-comision" style="white-space: nowrap; font-variant-numeric: tabular-nums;">
                 <strong style="color: var(--accent-cyan);">S/ <%= number_with_precision(item[:comision_soles].to_f, precision: 2, separator: '.', delimiter: ',') %></strong>
               </td>
               <td class="text-center" 
@@ -112,13 +194,13 @@
         </tbody>
         <tfoot>
           <tr>
-            <td colspan="6"><strong>Total Periodos (<%= @selected_months.join(', ') %>)</strong></td>
+            <td colspan="7"><strong>Total (Periodo: <%= @start_date.strftime("%d/%m/%Y") %> - <%= @end_date.strftime("%d/%m/%Y") %>)</strong></td>
             <td class="text-right" style="white-space: nowrap;">
-              <strong>S/ <%= number_with_precision((@vendor_details || []).sum { |i| i[:precio_soles].to_f }, precision: 2, separator: '.', delimiter: ',') %></strong>
+              <strong id="total-precio-footer">S/ <%= number_with_precision((@vendor_details || []).sum { |i| i[:precio_soles].to_f }, precision: 2, separator: '.', delimiter: ',') %></strong>
             </td>
             <td></td>
             <td class="text-right" style="white-space: nowrap;">
-              <strong style="color: var(--accent-cyan); font-size: 1.1rem;">S/ <%= number_with_precision((@vendor_details || []).sum { |i| i[:comision_soles].to_f }, precision: 2, separator: '.', delimiter: ',') %></strong>
+              <strong id="total-comision-footer" style="color: var(--accent-cyan); font-size: 1.1rem;">S/ <%= number_with_precision((@vendor_details || []).sum { |i| i[:comision_soles].to_f }, precision: 2, separator: '.', delimiter: ',') %></strong>
             </td>
             <td data-dashboard-target="commissionColumn" style="display: none;"></td>
           </tr>
@@ -173,12 +255,19 @@
     </div>
   <% end %>
 </div>
+
+<% if @supervisor_rows.present? %>
+  <div class="supervisor-integration" style="margin-top: -14px;">
+    <%= render partial: "dashboard/tabs/supervisor", locals: { supervisor_rows: @supervisor_rows, integrated: true } %>
+  </div>
+<% end %>
 <script>
 (function(){
   var _vendedorDesc = true;
+
+  // Función para ordenar filas
   function sortVendedorRows(desc) {
-    var tbody = document.querySelector('#vendedor-detail-table tbody');
-    if (!tbody) { tbody = document.querySelector('.data-table tbody'); }
+    var tbody = document.getElementById('vendedor-items-body');
     if (!tbody) return;
     var rows = Array.from(tbody.querySelectorAll('tr[data-date]'));
     rows.sort(function(a, b){
@@ -189,11 +278,80 @@
     var icon = document.getElementById('vendedor-sort-icon');
     if (icon) icon.innerHTML = desc ? '&#9660;' : '&#9650;';
   }
+
   window.toggleVendedorDateSort = function(){
     _vendedorDesc = !_vendedorDesc;
     sortVendedorRows(_vendedorDesc);
   };
-  // Ordenar al cargar: más reciente primero
+
+  // Función para mostrar/ocultar el dropdown de filtro
+  window.toggleClienteFilter = function(e) {
+    e.stopPropagation();
+    document.getElementById('cliente-filter-dropdown').classList.toggle('active');
+  };
+
+  // Función para filtrar por tipo de cliente
+  window.filterByCliente = function(tipo, e) {
+    if (e) e.preventDefault();
+    document.getElementById('cliente-filter-dropdown').classList.remove('active');
+    
+    var tbody = document.getElementById('vendedor-items-body');
+    if (!tbody) return;
+    var rows = Array.from(tbody.querySelectorAll('tr'));
+    
+    rows.forEach(function(row) {
+      var rowTipo = row.dataset.tipoCliente || '';
+      if (tipo === 'TODOS' || rowTipo.includes(tipo)) {
+        row.style.display = '';
+      } else {
+        row.style.display = 'none';
+      }
+    });
+
+    recalculateVendedorTotals();
+  };
+
+  // Función para recalcular totales basados en filas visibles
+  function recalculateVendedorTotals() {
+    var tbody = document.getElementById('vendedor-items-body');
+    if (!tbody) return;
+    var rows = Array.from(tbody.querySelectorAll('tr')).filter(r => r.style.display !== 'none');
+    
+    var totalPrecio = 0;
+    var totalComision = 0;
+
+    rows.forEach(function(row) {
+      var precioCell = row.querySelector('.row-precio');
+      var comisionCell = row.querySelector('.row-comision');
+
+      if (precioCell) {
+        var p = precioCell.textContent.replace('S/ ', '').replace(/,/g, '').trim();
+        totalPrecio += parseFloat(p) || 0;
+      }
+      if (comisionCell) {
+        var c = comisionCell.textContent.replace('S/ ', '').replace(/,/g, '').trim();
+        totalComision += parseFloat(c) || 0;
+      }
+    });
+
+    var totalPrecioElem = document.getElementById('total-precio-footer');
+    var totalComisionElem = document.getElementById('total-comision-footer');
+
+    if (totalPrecioElem) {
+      totalPrecioElem.textContent = 'S/ ' + totalPrecio.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    if (totalComisionElem) {
+      totalComisionElem.textContent = 'S/ ' + totalComision.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+  }
+
+  // Cerrar dropdown al hacer clic fuera
+  document.addEventListener('click', function() {
+    var dropdown = document.getElementById('cliente-filter-dropdown');
+    if (dropdown) dropdown.classList.remove('active');
+  });
+
+  // Ordenar por defecto al cargar
   sortVendedorRows(true);
 })();
 </script>

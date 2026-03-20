@@ -313,6 +313,7 @@ class DashboardController < ApplicationController
     @vendor_details = []
     @product_details = []
     @vendor_data = []
+    @supervisor_rows = []
     @monthly_data = []
     @dashboard = { total_monto: 0, total_cobrado: 0, total_saldo: 0, total_comprobantes: 0, total_api_count: 0 }
 
@@ -376,6 +377,8 @@ class DashboardController < ApplicationController
         end
       end
 
+      @start_date = start_date
+      @end_date = end_date
       start_date_str = start_date.strftime("%Y-%m-%d")
       end_date_str = end_date.strftime("%Y-%m-%d 23:59:59")
 
@@ -402,7 +405,7 @@ class DashboardController < ApplicationController
       }
 
       if params[:comision_pagada].present? && params[:comision_pagada] != "Todo"
-        api_params[:fd__comision_pagada] = (params[:comision_pagada] == "S")
+        api_params[:comision_pagada] = (params[:comision_pagada] == "S" ? "1" : "0")
       end
 
       if @selected_cancelado != "Todo"
@@ -475,6 +478,34 @@ class DashboardController < ApplicationController
         date = (Date.parse(item[:fecha_emision].to_s) rescue Date.new(2000))
         [cls, -date.to_time.to_i]
       end
+      
+      # 4. Cargar datos de supervisor para integración en pestaña Vendedor
+      if @active_tab == "vendedor"
+        begin
+          supervisor_commissions = Rails.cache.fetch("repr_comisiones_sup", expires_in: 24.hours) { client.fetch_supervisor_commissions }
+          supervisor_keys = Rails.cache.fetch("repr_comisiones_keys", expires_in: 24.hours) { client.fetch_supervisor_keys }
+          
+          # Solo mostrar si el vendedor seleccionado ES un supervisor (Alicia, etc.)
+          if @selected_vendors.any? && !@selected_vendors.include?("Todas")
+            # Filtrar la lista de comisiones de supervisores: solo aquellos cuyo nombre o ID está en @selected_vendors
+            supervisor_commissions = (supervisor_commissions || []).select do |sup|
+              sup_name = sup[:nombre].to_s.strip.upcase
+              sup_id = sup[:url].to_s.split('/').last.upcase rescue nil
+              @selected_vendors.any? { |v| v.upcase == sup_name || (sup_id && v.upcase == sup_id) }
+            end
+          end
+
+          if supervisor_commissions.present?
+            pagada_filter = params[:comision_pagada] || "N"
+            @supervisor_rows = build_supervisor_rows(supervisor_commissions, supervisor_keys, @commissions, client, start_date_str, end_date_str, pagada_filter)
+          else
+            @supervisor_rows = []
+          end
+        rescue => e
+          Rails.logger.error("Error cargando supervisor para vendedor: #{e.message}")
+          @supervisor_rows = []
+        end
+      end
 
       # Listas para filtros (Excluir OFICINA)
       if @commissions.present?
@@ -513,17 +544,27 @@ class DashboardController < ApplicationController
 
         # Determinar Comisión
         comision_pct = 0.0
+        clase = nil
 
         if mode == :vendor
-          vendedor_name = inv["vendedor"].to_s.strip.upcase
-          tipo_cliente = inv["tipo_cliente"].to_s.upcase
-          com_info = @commissions_map[vendedor_name]
+          # [NUEVA LÓGICA EXPERIMENTAL] Priorizar comisión por producto si existe
+          prod_com_info = @product_commissions_map[prod_code]
           
-          if com_info
-            if tipo_cliente.include?("PRIVADO")
-              comision_pct = (com_info[:comision_priv] || com_info[:comision_privado]).to_f
-            elsif tipo_cliente.include?("PUBLICO")
-              comision_pct = (com_info[:comision_pub] || com_info[:comision_publico]).to_f
+          if prod_com_info
+            comision_pct = (prod_com_info[:comision] || prod_com_info[:comision_pct]).to_f
+            clase = prod_com_info[:clase].to_s.strip.upcase
+          else
+            # Lógica tradicional: Comisión por Representante
+            vendedor_name = inv["vendedor"].to_s.strip.upcase
+            tipo_cliente = inv["tipo_cliente"].to_s.upcase
+            com_info = @commissions_map[vendedor_name]
+            
+            if com_info
+              if tipo_cliente.include?("PRIVADO")
+                comision_pct = (com_info[:comision_priv] || com_info[:comision_privado]).to_f
+              elsif tipo_cliente.include?("PUBLICO")
+                comision_pct = (com_info[:comision_pub] || com_info[:comision_publico]).to_f
+              end
             end
           end
         elsif mode == :product
@@ -715,8 +756,7 @@ class DashboardController < ApplicationController
     }
     
     if pagada_filter.present? && pagada_filter != "Todo"
-      # Usamos doble underscore para el filtro de la API
-      api_params[:fd__comision_pagada_sup] = (pagada_filter == "S")
+      api_params[:comision_pagada_sup] = (pagada_filter == "S" ? "1" : "0")
     end
 
     api_data = client.fetch_details_pages(**api_params)

@@ -49,6 +49,36 @@
   .filter-icon:hover {
     transform: scale(1.2);
   }
+  .filter-current-label {
+    font-size: 0.65rem;
+    color: var(--accent-cyan);
+    font-weight: 700;
+    text-transform: uppercase;
+    display: block;
+    margin-top: -2px;
+    letter-spacing: 0.5px;
+  }
+  .filter-dropdown-content a {
+    color: #e0e0e0;
+    padding: 10px 16px;
+    text-decoration: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.8rem;
+    font-weight: 500;
+    transition: all 0.2s;
+    text-align: left;
+    border-bottom: 1px solid #333;
+  }
+  .filter-check {
+    color: var(--accent-cyan);
+    font-weight: bold;
+    visibility: hidden;
+  }
+  .filter-check.active {
+    visibility: visible;
+  }
 </style>
 
 <!-- Tab de Vendedor: Resumen o Detalle -->
@@ -86,14 +116,23 @@
       <thead>
         <tr>
           <th style="width: 110px; position: sticky; top: 0; z-index: 20; white-space: nowrap; background: var(--bg-table-header);">
-            <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
-              <span style="text-transform: uppercase; font-size: 0.8rem; font-weight: 600; color: var(--text-secondary);">Cliente</span>
+            <div style="display: flex; align-items: flex-start; justify-content: space-between; width: 100%;">
+              <div style="display: flex; flex-direction: column;">
+                <span style="text-transform: uppercase; font-size: 0.8rem; font-weight: 600; color: var(--text-secondary);">Cliente</span>
+                <span class="filter-current-label" id="current-cliente-filter">TODOS</span>
+              </div>
               <div class="filter-dropdown" id="cliente-filter-dropdown">
                 <span class="filter-icon" onclick="toggleClienteFilter(event)">&#9660;</span>
                 <div class="filter-dropdown-content">
-                  <a href="#" onclick="filterByCliente('TODOS', event)">TODOS</a>
-                  <a href="#" onclick="filterByCliente('PRIVADO', event)">PRIVADO</a>
-                  <a href="#" onclick="filterByCliente('PUBLICO', event)">PUBLICO</a>
+                  <a href="#" onclick="filterByCliente('TODOS', event)" data-filter-val="TODOS">
+                    TODOS <span class="filter-check active">&#10003;</span>
+                  </a>
+                  <a href="#" onclick="filterByCliente('PRIVADO', event)" data-filter-val="PRIVADO">
+                    PRIVADO <span class="filter-check">&#10003;</span>
+                  </a>
+                  <a href="#" onclick="filterByCliente('PUBLICO', event)" data-filter-val="PUBLICO">
+                    PUBLICO <span class="filter-check">&#10003;</span>
+                  </a>
                 </div>
               </div>
             </div>
@@ -305,6 +344,19 @@
         row.style.display = '';
       } else {
         row.style.display = 'none';
+      }
+    });
+    
+    // Actualizar indicadores visuales
+    var label = document.getElementById('current-cliente-filter');
+    if (label) label.textContent = tipo;
+    
+    var checks = document.querySelectorAll('#cliente-filter-dropdown .filter-check');
+    checks.forEach(function(check) {
+      if (check.closest('a').dataset.filterVal === tipo) {
+        check.classList.add('active');
+      } else {
+        check.classList.remove('active');
       }
     });
 

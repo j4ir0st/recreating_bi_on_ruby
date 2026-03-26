@@ -338,7 +338,9 @@ class DashboardController < ApplicationController
       end_date = nil
 
       # Prioridad: rango personalizado (date_start / date_end) del date range picker
-      if params[:date_start].present? && params[:date_end].present?
+      @use_date_range = params[:use_date_range] == "1"
+      
+      if @use_date_range && params[:date_start].present? && params[:date_end].present?
         begin
           start_date = Date.parse(params[:date_start])
           end_date   = Date.parse(params[:date_end])
@@ -347,6 +349,11 @@ class DashboardController < ApplicationController
         rescue ArgumentError
           # Si las fechas no son válidas, caemos al comportamiento por defecto
         end
+      elsif !@use_date_range
+        # Si el interruptor está apagado, forzamos a mostrar toda la información de todos los años
+        @selected_years = @years
+        start_date = nil
+        end_date = nil
       end
 
       unless start_date && end_date
@@ -379,8 +386,15 @@ class DashboardController < ApplicationController
 
       @start_date = start_date
       @end_date = end_date
-      start_date_str = start_date.strftime("%Y-%m-%d")
-      end_date_str = end_date.strftime("%Y-%m-%d 23:59:59")
+      
+      if @use_date_range
+        start_date_str = start_date&.strftime("%Y-%m-%d")
+        end_date_str = end_date&.strftime("%Y-%m-%d 23:59:59")
+      else
+        # Si no se usa el filtro de fechas, omitimos los parámetros para que la API devuelva todo (según tip del usuario)
+        start_date_str = nil
+        end_date_str = nil
+      end
 
       # Tabla maestra de comisiones (datos que rara vez cambian — cache 1 hora)
       @commissions = Rails.cache.fetch("repr_comisiones", expires_in: 24.hours) do

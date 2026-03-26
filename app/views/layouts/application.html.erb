@@ -198,6 +198,17 @@
             otherCheckboxes.forEach(cb => cb.checked = isChecked);
           }
         }
+
+        toggleDateRange(e) {
+          const isChecked = e.target.checked;
+          const group = document.getElementById('date-range-group');
+          if (group) {
+            group.classList.toggle('disabled', !isChecked);
+            const trigger = group.querySelector('.drp-trigger');
+            if (trigger) trigger.disabled = !isChecked;
+          }
+          this.filterChanged();
+        }
       onItemCheckboxChange() {
         this.pendingChanges = true;
       }

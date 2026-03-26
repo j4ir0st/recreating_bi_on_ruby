@@ -233,7 +233,15 @@
         </tbody>
         <tfoot>
           <tr>
-            <td colspan="7"><strong>Total (Periodo: <%= @start_date.strftime("%d/%m/%Y") %> - <%= @end_date.strftime("%d/%m/%Y") %>)</strong></td>
+            <td colspan="7">
+              <strong>Total (Periodo: 
+                <% if @start_date && @end_date %>
+                  <%= @start_date.strftime("%d/%m/%Y") %> - <%= @end_date.strftime("%d/%m/%Y") %>
+                <% else %>
+                  Todos los años
+                <% end %>
+              )</strong>
+            </td>
             <td class="text-right" style="white-space: nowrap;">
               <strong id="total-precio-footer">S/ <%= number_with_precision((@vendor_details || []).sum { |i| i[:precio_soles].to_f }, precision: 2, separator: '.', delimiter: ',') %></strong>
             </td>

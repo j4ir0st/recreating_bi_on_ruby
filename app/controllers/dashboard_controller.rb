@@ -3,6 +3,18 @@ class DashboardController < ApplicationController
 
   def index
     @active_tab = params[:tab] || "vendedor"
+    
+    # [OPTIMIZACIÓN] Carga Diferida: Si es la entrada inicial al app (nueva pestaña o URL limpia), 
+    # enviamos el Shell (Layout + Cáscara Vacía) inmediatamente sin consultar APIs pesadas.
+    # Stimulus se encargará de disparar la carga real una vez el navegador reciba el HTML.
+    is_initial_load = params[:tab].blank? && params[:year].blank? && params[:vendor].blank? && !request.xhr?
+    
+    if is_initial_load
+      @active_tab = nil # Esto activa la skeleton-shell en index.html.erb
+      load_filters_only # Carga rápida desde caché para los selectores del header
+      return
+    end
+
     if @active_tab == "supervisor"
       return unless prepare_supervisor_data
     else
@@ -229,13 +241,42 @@ class DashboardController < ApplicationController
 
   def load_filters_only(client = nil)
     client ||= ApiClient.new(session[:api_token])
+    
+    # 0. Inicializar estado básico para evitar Nil en las vistas (Header y Shell)
+    # Copiado de load_data para mantener consistencia visual en la carga inicial
+    @selected_year = params[:year] || Date.today.year.to_s
+    raw_years = params[:year] || []
+    @selected_years = raw_years.is_a?(Array) ? raw_years.reject(&:blank?) : [raw_years.to_s].reject(&:blank?)
+    @selected_years = [Date.today.year.to_s] if @selected_years.empty?
+    @selected_year = @selected_years.sort.last
+    @selected_cancelado = params[:cancelado] || "S"
+
+    raw_months = params[:date_range] || []
+    @selected_months = raw_months.is_a?(Array) ? raw_months : [raw_months].reject(&:blank?)
+
+    raw_vendors = params[:vendor] || []
+    @selected_vendors = raw_vendors.is_a?(Array) ? raw_vendors : [raw_vendors].reject(&:blank?)
+
+    @years = ([Date.today.year, 2025].max).downto(2025).map(&:to_s).reverse
+    # @dates: genera YYYY-MM para todos los años seleccionados (necesario para filtros asíncronos)
+    @dates = @selected_years.flat_map { |y| (1..12).map { |m| "#{y}-#{m.to_s.rjust(2, '0')}" } }.sort
+    @use_date_range = params[:use_date_range] == "1"
+    
+    # Inicializar a vacío para evitar nil en el shell
+    @vendors = []
+    @dashboard = { total_monto: 0, total_cobrado: 0, total_saldo: 0, total_comprobantes: 0, total_api_count: 0 }
+
     @commissions = Rails.cache.fetch("repr_comisiones", expires_in: 24.hours) do
       client.fetch_commissions
     end
     @vendors = @commissions.map { |c| c[:nombre].to_s.strip }.compact.uniq.reject { |v| v.upcase == "OFICINA" }.sort
   rescue => e
-    Rails.logger.error("Error cargando filtros: #{e.message}")
-    @vendors = []
+    Rails.logger.error("Error cargando filtros rápidos: #{e.message}")
+    @vendors ||= []
+    @selected_years ||= [Date.today.year.to_s]
+    @years ||= @selected_years
+    @selected_vendors ||= []
+    @dashboard ||= { total_monto: 0, total_cobrado: 0, total_saldo: 0, total_comprobantes: 0, total_api_count: 0 }
   end
 
   MONTH_NAMES_ES = {

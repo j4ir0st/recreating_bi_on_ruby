@@ -1,0 +1,82 @@
+/* Estilos para el Cargador (Spinner) y la Cáscara Vacía (Skeleton) */
+
+/* Contenedor del Cargador Global con efecto Glassmorphism */
+#app-loader {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(10, 15, 28, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+  transition: opacity 0.4s ease, visibility 0.4s;
+  visibility: visible;
+  opacity: 1;
+}
+
+#app-loader.hidden {
+  visibility: hidden;
+  opacity: 0;
+}
+
+/* Spinner Moderno y Vibrante */
+.spinner-premium {
+  width: 60px;
+  height: 60px;
+  border: 4px solid rgba(0, 212, 255, 0.1);
+  border-left-color: var(--accent-cyan, #00d4ff);
+  border-right-color: var(--accent-orange, #ff8c00);
+  border-radius: 50%;
+  animation: spin-premium 1.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite;
+  box-shadow: 0 0 20px rgba(0, 212, 255, 0.3);
+}
+
+@keyframes spin-premium {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Estilos para la Cáscara Vacía (Skeleton Screen) */
+.skeleton-box {
+  display: inline-block;
+  height: 1em;
+  position: relative;
+  overflow: hidden;
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+
+.skeleton-box::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0,
+    rgba(255, 255, 255, 0.03) 20%,
+    rgba(255, 255, 255, 0.06) 60%,
+    rgba(255, 255, 255, 0)
+  );
+  animation: shimmer 2s infinite;
+  content: '';
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Clases de utilidad para el esqueleto */
+.skeleton-text { width: 100%; height: 12px; margin-bottom: 8px; }
+.skeleton-title { width: 60%; height: 24px; margin-bottom: 16px; }
+.skeleton-rect { width: 100%; height: 150px; }
+.skeleton-circle { width: 40px; height: 40px; border-radius: 50%; }

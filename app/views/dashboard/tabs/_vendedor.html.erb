@@ -94,17 +94,17 @@
         grouped_items.sum { |i| i[:comision_soles].to_f }
       end
     %>
-    <!-- VISTA DETALLADA: Items por Factura para el Vendedor Seleccionado -->
-    <div class="table-header" style="display: flex; justify-content: space-between; align-items: center;">
-      <div>
-      <div style="display: flex; align-items: center; gap: 10px;">
+  <!-- VISTA DETALLADA: Items por Factura para el Vendedor Seleccionado -->
+  <div class="table-header" style="display: flex; justify-content: space-between; align-items: center;padding: 4px 12px; margin: 0px">
+    <div>
+      <div style="display: flex; align-items: center; gap: 2px;">
         <h3>Detalle de Ventas - <%= @selected_vendors.length > 3 ? "#{@selected_vendors.length} Vendedores" : @selected_vendors.join(', ') %></h3>
         <button data-action="click->dashboard#toggleCommissionEdit" class="btn-icon" title="Editar Comisiones" data-dashboard-target="editIcon" style="background: none; border: none; color: var(--accent-cyan); cursor: pointer; display: flex; align-items: center; padding: 5px;">
           <!-- Icono de Editar (Lápiz) por defecto -->
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-edit"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
         </button>
       </div>
-      <p>Desglose por producto y factura</p>
+      <p style="padding: 4px; margin: 0px">Desglose por producto y factura</p>
     </div>
     <button data-action="click->dashboard#exportToExcel" class="btn-excel" title="Descargar Excel">
       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
@@ -124,13 +124,13 @@
               <div class="filter-dropdown" id="cliente-filter-dropdown">
                 <span class="filter-icon" onclick="toggleClienteFilter(event)">&#9660;</span>
                 <div class="filter-dropdown-content">
-                  <a href="#" onclick="filterByCliente('TODOS', event)" data-filter-val="TODOS">
+                  <a href="#" onclick="filtrarPorCliente('TODOS', event)" data-filter-val="TODOS">
                     TODOS <span class="filter-check active">&#10003;</span>
                   </a>
-                  <a href="#" onclick="filterByCliente('PRIVADO', event)" data-filter-val="PRIVADO">
+                  <a href="#" onclick="filtrarPorCliente('PRIVADO', event)" data-filter-val="PRIVADO">
                     PRIVADO <span class="filter-check">&#10003;</span>
                   </a>
-                  <a href="#" onclick="filterByCliente('PUBLICO', event)" data-filter-val="PUBLICO">
+                  <a href="#" onclick="filtrarPorCliente('PUBLICO', event)" data-filter-val="PUBLICO">
                     PUBLICO <span class="filter-check">&#10003;</span>
                   </a>
                 </div>
@@ -310,25 +310,25 @@
 <% end %>
 <script>
 (function(){
-  var _vendedorDesc = true;
+  var _ordenDescendenteVendedor = true;
 
   // Función para ordenar filas
-  function sortVendedorRows(desc) {
+  function ordenarFilasVendedor(descendente) {
     var tbody = document.getElementById('vendedor-items-body');
     if (!tbody) return;
     var rows = Array.from(tbody.querySelectorAll('tr[data-date]'));
     rows.sort(function(a, b){
-      var da = a.dataset.date || '', db = b.dataset.date || '';
-      return desc ? db.localeCompare(da) : da.localeCompare(db);
+      var fechaA = a.dataset.date || '', fechaB = b.dataset.date || '';
+      return descendente ? fechaB.localeCompare(fechaA) : fechaA.localeCompare(fechaB);
     });
     rows.forEach(function(r){ tbody.appendChild(r); });
-    var icon = document.getElementById('vendedor-sort-icon');
-    if (icon) icon.innerHTML = desc ? '&#9660;' : '&#9650;';
+    var icono = document.getElementById('vendedor-sort-icon');
+    if (icono) icono.innerHTML = descendente ? '&#9660;' : '&#9650;';
   }
 
   window.toggleVendedorDateSort = function(){
-    _vendedorDesc = !_vendedorDesc;
-    sortVendedorRows(_vendedorDesc);
+    _ordenDescendenteVendedor = !_ordenDescendenteVendedor;
+    ordenarFilasVendedor(_ordenDescendenteVendedor);
   };
 
   // Función para mostrar/ocultar el dropdown de filtro
@@ -338,7 +338,7 @@
   };
 
   // Función para filtrar por tipo de cliente
-  window.filterByCliente = function(tipo, e) {
+  window.filtrarPorCliente = function(tipo, e) {
     if (e) e.preventDefault();
     document.getElementById('cliente-filter-dropdown').classList.remove('active');
     
@@ -356,11 +356,11 @@
     });
     
     // Actualizar indicadores visuales
-    var label = document.getElementById('current-cliente-filter');
-    if (label) label.textContent = tipo;
+    var etiqueta = document.getElementById('current-cliente-filter');
+    if (etiqueta) etiqueta.textContent = tipo;
     
-    var checks = document.querySelectorAll('#cliente-filter-dropdown .filter-check');
-    checks.forEach(function(check) {
+    var checkboxes = document.querySelectorAll('#cliente-filter-dropdown .filter-check');
+    checkboxes.forEach(function(check) {
       if (check.closest('a').dataset.filterVal === tipo) {
         check.classList.add('active');
       } else {
@@ -368,14 +368,14 @@
       }
     });
 
-    recalculateVendedorTotals();
+    recalcularTotalesVendedor();
   };
 
   // Función para recalcular totales basados en filas visibles
-  function recalculateVendedorTotals() {
+  function recalcularTotalesVendedor() {
     var tbody = document.getElementById('vendedor-items-body');
     if (!tbody) return;
-    var rows = Array.from(tbody.querySelectorAll('tr')).filter(r => r.style.display !== 'none');
+    var filas = Array.from(tbody.querySelectorAll('tr')).filter(r => r.style.display !== 'none');
     
     var totalPrecio = 0;
     var totalComision = 0;
@@ -412,6 +412,6 @@
   });
 
   // Ordenar por defecto al cargar
-  sortVendedorRows(true);
+  ordenarFilasVendedor(true);
 })();
 </script>

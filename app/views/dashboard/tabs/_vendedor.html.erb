@@ -96,22 +96,22 @@
     %>
   <!-- VISTA DETALLADA: Items por Factura para el Vendedor Seleccionado -->
   <div class="table-header" style="display: flex; justify-content: space-between; align-items: center;padding: 4px 12px; margin: 0px">
-    <div>
-      <div style="display: flex; align-items: center; gap: 2px;">
+    <div style="padding: 0px; margin: 0px">
+      <div style="display: flex; align-items: center; gap: 12px;">
         <h3>Detalle de Ventas - <%= @selected_vendors.length > 3 ? "#{@selected_vendors.length} Vendedores" : @selected_vendors.join(', ') %></h3>
         <button data-action="click->dashboard#toggleCommissionEdit" class="btn-icon" title="Editar Comisiones" data-dashboard-target="editIcon" style="background: none; border: none; color: var(--accent-cyan); cursor: pointer; display: flex; align-items: center; padding: 5px;">
           <!-- Icono de Editar (Lápiz) por defecto -->
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-edit"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
         </button>
       </div>
-      <p style="padding: 4px; margin: 0px">Desglose por producto y factura</p>
+      <p style="padding: 0px; margin: 0px">Desglose por producto y factura</p>
     </div>
     <button data-action="click->dashboard#exportToExcel" class="btn-excel" title="Descargar Excel">
       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
       Exportar Excel
     </button>
   </div>
-  <div class="table-wrapper">
+  <div class="table-wrapper" style="height: calc(100vh - 300px);">
     <table class="data-table">
       <thead>
         <tr>
@@ -137,8 +137,14 @@
               </div>
             </div>
           </th>
-          <th style="width: 85px; cursor:pointer; user-select:none; white-space:nowrap;" id="vendedor-fecha-th" onclick="toggleVendedorDateSort()">
-            Fecha <span id="vendedor-sort-icon" style="font-size:0.7rem; color:var(--accent-cyan);">&#9660;</span>
+          <th style="width: 100px; cursor:pointer; user-select:none; white-space:nowrap; background: var(--bg-table-header);" id="vendedor-fecha-th" onclick="toggleVendedorDateSort()">
+            <div style="display: flex; align-items: flex-start; justify-content: space-between; width: 100%;">
+              <div style="display: flex; flex-direction: column;">
+                <span style="text-transform: uppercase; font-size: 0.8rem; font-weight: 600; color: var(--text-secondary);">Fecha</span>
+                <span class="filter-current-label" id="current-fecha-filter">ACTUAL</span>
+              </div>
+              <span id="vendedor-sort-icon" style="font-size:0.7rem; color:var(--accent-cyan); padding-top: 4px;">&#9660;</span>
+            </div>
           </th>
           <th style="width: 120px;">N° Factura</th>
           <th style="width: 55px;" class="text-center">Can.</th>
@@ -159,7 +165,7 @@
       </thead>
         <tbody id="vendedor-items-body">
           <% (@vendor_details || []).each do |item| %>
-            <tr data-date="<%= item[:fecha_emision] %>" data-tipo-cliente="<%= item[:tipo_cliente].to_s.upcase %>">
+            <tr data-date="<%= item[:fecha_sort] %>" data-tipo-cliente="<%= item[:tipo_cliente].to_s.upcase %>">
               <% 
                 tipo = item[:tipo_cliente].to_s
                 total_tipo = tipo_cliente_totals[tipo] || 0
@@ -322,8 +328,12 @@
       return descendente ? fechaB.localeCompare(fechaA) : fechaA.localeCompare(fechaB);
     });
     rows.forEach(function(r){ tbody.appendChild(r); });
+    
+    // Actualizar iconos y etiquetas
     var icono = document.getElementById('vendedor-sort-icon');
+    var etiqueta = document.getElementById('current-fecha-filter');
     if (icono) icono.innerHTML = descendente ? '&#9660;' : '&#9650;';
+    if (etiqueta) etiqueta.textContent = descendente ? 'ACTUAL' : 'ANTIGÜO';
   }
 
   window.toggleVendedorDateSort = function(){
@@ -380,7 +390,7 @@
     var totalPrecio = 0;
     var totalComision = 0;
 
-    rows.forEach(function(row) {
+    filas.forEach(function(row) {
       var precioCell = row.querySelector('.row-precio');
       var comisionCell = row.querySelector('.row-comision');
 

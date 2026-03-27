@@ -638,18 +638,21 @@ class DashboardController < ApplicationController
         precio_item = item["precio_soles"].to_f
         comision_soles = precio_item * comision_pct
 
-        # Formatear fecha: dd/mm/yyyy
+        # Formatear fecha: dd/mm/yyyy y formato sort: yyyy-mm-dd
         raw_date = inv["fecha_emision"]
-        formatted_date = begin
-          Time.parse(raw_date.to_s).strftime("%d/%m/%Y")
+        parsed_date = begin
+          Time.parse(raw_date.to_s)
         rescue
-          raw_date
+          nil
         end
+        formatted_date = parsed_date ? parsed_date.strftime("%d/%m/%Y") : raw_date.to_s
+        sort_date = parsed_date ? parsed_date.strftime("%Y-%m-%d") : "2000-01-01"
 
         flattened_items << {
           invoice_url: item["url"], # URL específica para el recurso según fd:url
           numero_factura: inv["nro_fact"] || inv["numero_factura"],
           fecha_emision: formatted_date,
+          fecha_sort: sort_date,
           vendedor: inv["vendedor"],
           tipo_cliente: inv["tipo_cliente"],
           nombre_cliente: inv["nombre_cliente"] || inv["cliente"], # Nombre del cliente desde CABECERA

@@ -3,8 +3,8 @@
   <!-- Header: Row 1 (Title & User) -->
   <div class="header" style="justify-content: space-between; align-items: center; margin-bottom: 5px; border-bottom: 1px solid var(--border-color); padding-bottom: 5px;">
     <div class="header-left" style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px;">
-      <h1 data-action="click->dashboard#refreshCache" style="cursor: pointer; padding: 0px;" title="Refrescar tablas de comisiones">Calculador de Comisiones</h1>
-      <p>Gestiona y calcula comisiones de vendedores por mes</p>
+      <h1 data-action="click->dashboard#refreshCache" style="cursor: pointer; padding: 0px; margin: 0px;" title="Refrescar tablas de comisiones">Calculador de Comisiones</h1>
+      <p style="padding: 0px; margin: 0px;">Gestiona y calcula comisiones de vendedores por mes</p>
     </div>
     <div class="header-right" style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
       <div class="welcome-msg" style="color: var(--accent-cyan); font-weight: 600; font-size: 0.95rem; white-space: nowrap;">
@@ -39,7 +39,7 @@
         </div>
           <% @use_date_range = params[:use_date_range] == "1" %>
           <!-- Filtro Rango de Fechas (Date Range Picker) -->
-          <div class="filter-group <%= 'disabled' unless @use_date_range %>" style="flex: 1.4; min-width: 300px;" id="date-range-group">
+          <div class="filter-group <%= 'disabled' unless @use_date_range %>" style="flex: 1.4; min-width: 360px;" id="date-range-group">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
               <label style="margin-bottom: 0;">Rango de Fechas - Emisión de Factura</label>
               <input type="checkbox" name="use_date_range" value="1" <%= 'checked' if @use_date_range %> 

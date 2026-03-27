@@ -15,6 +15,48 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <!-- SheetJS para Exportación a Excel -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  
+  <script>
+    /* === UTILIDADES GLOBALES DE CARGA (SPINNER) === */
+    // Estas funciones deben estar disponibles antes de que Stimulus se conecte
+    window.showLoader = function() {
+      const cargador = document.getElementById("global-loader");
+      if (cargador) {
+        cargador.classList.remove("hidden");
+        // Aseguramiento: ocultar tras 20 segundos si algo falla críticamente
+        clearTimeout(window.temporizadorCarga);
+        window.temporizadorCarga = setTimeout(window.hideLoader, 20000);
+      }
+    };
+    
+    window.hideLoader = function() {
+      const cargador = document.getElementById("global-loader");
+      if (cargador) cargador.classList.add("hidden");
+      clearTimeout(window.temporizadorCarga);
+    };
+
+    // Listeners inteligentes para el ciclo de vida de Turbo
+    document.addEventListener("turbo:visit", () => {
+      if (window.showLoader) window.showLoader();
+    });
+    
+    document.addEventListener("turbo:load", () => {
+      // SI detectamos un skeleton (carga inicial), NO ocultamos el loader.
+      // Stimulus lo ocultará tras completar el fetch de la data real.
+      const haySkeleton = document.querySelector('.skeleton-shell');
+      if (!haySkeleton && window.hideLoader) {
+        window.hideLoader();
+      } else if (haySkeleton) {
+        console.log("[Loader] Skeleton detectado, manteniendo spinner activo...");
+      }
+    });
+
+    // Monitoreo de errores JS globales
+    window.onerror = function(message, source, lineno, colno, error) {
+      console.error(`Error JS: ${message} en ${source}:${lineno}`, error);
+      return false;
+    };
+  </script>
 
   <script type="module">
     import * as Turbo from "https://cdn.jsdelivr.net/npm/@hotwired/turbo@7.3.0/+esm";
@@ -1771,48 +1813,6 @@
     <% end %>
   </div>
 
-  <script>
-    // Mostrar loader en navegación Turbo usando la función global con timeout
-    document.addEventListener("turbo:visit", () => {
-      if (window.showLoader) window.showLoader();
-    });
-    
-    // Escuchar cuando Turbo termina de cargar para ocultar el cargador
-    document.addEventListener("turbo:load", () => {
-      if (window.hideLoader) window.hideLoader();
-    });
-
-    // Función global para mostrar el cargador manualmente
-    window.showLoader = function() {
-      const cargador = document.getElementById("global-loader");
-      if (cargador) {
-        cargador.classList.remove("hidden");
-        // Aseguramiento: ocultar tras 10 segundos si algo falla de forma crítica
-        clearTimeout(window.temporizadorCarga);
-        window.temporizadorCarga = setTimeout(window.hideLoader, 10000);
-      }
-    };
-    
-    // Función global para ocultar el cargador manualmente
-    window.hideLoader = function() {
-      const cargador = document.getElementById("global-loader");
-      if (cargador) cargador.classList.add("hidden");
-      clearTimeout(window.temporizadorCarga);
-    };
-
-    // Monitoreo de errores JS globales para retroalimentación visual
-    window.onerror = function(message, source, lineno, colno, error) {
-      const msg = `Error JS: ${message} en ${source}:${lineno}`;
-      console.error(msg, error);
-      // Intentar mostrar como toast si el controlador dashboard está cargado
-      const dash = document.querySelector('[data-controller="dashboard"]');
-      if (dash) {
-        const controller = application.getControllerForElementAndIdentifier(dash, "dashboard");
-        if (controller) controller.showToast(msg, 'error');
-      }
-      return false;
-    };
-  </script>
 
   <%= yield %>
 

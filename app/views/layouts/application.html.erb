@@ -63,6 +63,7 @@
     import { Application, Controller } from "https://cdn.jsdelivr.net/npm/@hotwired/stimulus@3.2.2/+esm";
 
     const application = Application.start();
+    console.log("[Stimulus] Aplicación iniciada y registrada v6");
     window.Turbo = Turbo; // Hacer Turbo accesible globalmente
 
     // Controlador Stimulus para el Panel de Control (Dashboard)
@@ -70,10 +71,11 @@
       static targets = ["content", "vendorSelect", "dateSelect", "yearSelect", "canceladoSelect", 
                         "editIcon", "commissionColumn", "selectAllCheckbox", "itemCheckbox",
                         "vendorTrigger", "comisionPagadaSelect"]
-
       connect() {
+        console.log("[Dashboard] Conectado! v6");
         // Recuperar la pestaña activa actual
         this.currentTab = document.querySelector('.tab-btn.active')?.dataset.tab || "vendedor";
+        console.log("[Dashboard] Pestaña inicial detectada:", this.currentTab);
         this.basePath = this.getBasePath();
         this.loadProductDescriptions();
         this.pendingChanges = false;
@@ -81,9 +83,15 @@
         this._filterSnapshot = this._getFormSnapshot();
 
         // [NUEVO] Si detectamos la cáscara vacía en la carga inicial, iniciamos la carga asíncrona
-        if (this.hasContentTarget && this.contentTarget.querySelector('.skeleton-shell')) {
+        if (this.hasContentTarget) {
+          const haySkeleton = this.contentTarget.querySelector('.skeleton-shell');
+          console.log("[Dashboard] Target 'content' encontrado. ¿Hay skeleton?", !!haySkeleton);
+          if (haySkeleton) {
           console.log("[Dashboard] Cáscara vacía detectada, iniciando carga automática...");
           this.cargarPestanaInicial();
+        }
+        } else {
+          console.warn("[Dashboard] ERROR: No se encontró el target 'content'");
         }
 
         // Cerrar dropdowns al hacer click fuera y ACTUALIZAR si hubo cambios
@@ -128,20 +136,42 @@
         const container = e.currentTarget.closest('.multiselect-container');
         const dropdown = container.querySelector('.multiselect-dropdown');
         
-        // Si vamos a cerrar el dropdown actual al hacerle click de nuevo
         const isCurrentlyOpen = dropdown.classList.contains('show');
         
-        // Cerrar otros dropdowns abiertos
         document.querySelectorAll('.multiselect-dropdown.show').forEach(d => {
           if (d !== dropdown) d.classList.remove('show');
         });
         
         dropdown.classList.toggle('show');
         
-        // Si se cerró explícitamente, disparamos la actualización
+        // Foco automático en el buscador al abrir
+        if (dropdown.classList.contains('show')) {
+          const searchInput = dropdown.querySelector('input[type="text"]');
+          if (searchInput) {
+            searchInput.value = '';
+            // Resetear visibilidad de opciones
+            dropdown.querySelectorAll('.multiselect-option').forEach(opt => opt.style.display = 'flex');
+            setTimeout(() => searchInput.focus(), 50);
+          }
+        }
+        
         if (isCurrentlyOpen) {
           this.filterChanged();
         }
+      }
+
+      filterVendors(e) {
+        const searchText = e.target.value.toLowerCase().trim();
+        const dropdown = e.target.closest('.multiselect-dropdown');
+        const options = dropdown.querySelectorAll('.multiselect-option');
+        
+        options.forEach(option => {
+          const label = option.querySelector('label');
+          if (label) {
+            const text = label.innerText.toLowerCase();
+            option.style.display = text.includes(searchText) ? 'flex' : 'none';
+          }
+        });
       }
 
 
@@ -430,6 +460,10 @@
         
         // --- LÓGICA DE EXCEPCIONES AL CAMBIAR DE PESTAÑA ---
         
+        // Visibilidad de filtros de historial (fuera del content target)
+        const hFilters = document.getElementById('historial-filters');
+        if (hFilters) hFilters.style.display = (tab === 'historial' ? 'flex' : 'none');
+
         // 1. Excepción Historial: Filtro vendedores siempre vacío
         if (tab === 'historial') {
           console.log('[filtro] Aplicando excepción Historial: vaciando vendedores');
@@ -1314,15 +1348,25 @@
       --transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
     }
 
-    body {
+    html, body {
+      height: 100vh;
+      margin: 0;
+      padding: 0;
+      overflow: hidden; /* Elimina el scroll global del navegador */
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
       background: var(--bg-primary);
       color: var(--text-primary);
-      min-height: 90vh;
-      overflow-x: hidden;
     }
-
-    .dashboard-container { max-width:4800px; max-height:4800px; margin:0 0px; padding:8px 4px 12px 12px; }
+ 
+    .dashboard-container { 
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      max-width: 100%;
+      margin: 0;
+      padding: 12px 14px;
+      box-sizing: border-box;
+    }
 
     .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:24px; }
     .header-left h1 {
@@ -1421,10 +1465,16 @@
     .table-header h3 { font-size:1rem; font-weight:600; color:var(--text-primary); }
     .table-header p { font-size:0.75rem; color:var(--text-muted); margin-top:2px; }
 
-    .table-wrapper { max-height:500px; overflow-y:auto; }
+    .table-wrapper { overflow-y:auto; height: 100%; min-height: 0; }
     .table-wrapper::-webkit-scrollbar { width:6px; }
     .table-wrapper::-webkit-scrollbar-track { background:var(--bg-secondary); }
     .table-wrapper::-webkit-scrollbar-thumb { background:var(--border-color); border-radius:3px; }
+    
+    /* Scrollbar personalizado para el contenedor de contenido principal */
+    [data-dashboard-target="content"]::-webkit-scrollbar { width:8px; }
+    [data-dashboard-target="content"]::-webkit-scrollbar-track { background:rgba(15,19,35,0.3); }
+    [data-dashboard-target="content"]::-webkit-scrollbar-thumb { background:rgba(11,197,234,0.25); border-radius:4px; transition:background 0.3s; }
+    [data-dashboard-target="content"]::-webkit-scrollbar-thumb:hover { background:rgba(11,197,234,0.4); }
 
     .data-table { width:100%; border-collapse:collapse; }
     .data-table thead th {

@@ -1,6 +1,6 @@
 <!-- Historial Tab: Registro de Cambios en Comisiones -->
-<div class="table-section">
-  <div class="table-header" style="display: flex; justify-content: space-between; align-items: center;">
+<div class="table-section" style="height: calc(100vh - 250px); flex-shrink: 0; display: flex; flex-direction: column; min-height: 0;">
+  <div class="table-header" style="display: flex; justify-content: space-between; align-items: center; padding: 4px 12px; margin: 0px;">
     <div>
       <div style="display: flex; align-items: center; gap: 10px;">
         <h3>Historial de Auditoría</h3>
@@ -32,7 +32,7 @@
       Exportar Excel
     </button>
   </div>
-  <div class="table-wrapper" id="audit-table-wrapper" style="max-height: 520px; overflow-y: auto;">
+  <div class="table-wrapper" id="audit-table-wrapper" style="flex: 1; min-height: 0;">
     <table class="data-table" id="audit-table">
       <thead>
         <tr>

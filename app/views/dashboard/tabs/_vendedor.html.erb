@@ -82,7 +82,7 @@
 </style>
 
 <!-- Tab de Vendedor: Resumen o Detalle -->
-<div class="table-section">
+<div class="table-section" id="vendedor-table-section" style="height: calc(100vh - 250px); flex-shrink: 0; display: flex; flex-direction: column; min-height: 0; margin-bottom: 24px;">
   <% if @selected_vendors.any? %>
     <%
       # Pre-calcular totales por tipo de cliente y clase para los tooltips
@@ -95,9 +95,9 @@
       end
     %>
   <!-- VISTA DETALLADA: Items por Factura para el Vendedor Seleccionado -->
-  <div class="table-header" style="display: flex; justify-content: space-between; align-items: center;padding: 4px 12px; margin: 0px">
+  <div class="table-header" style="display: flex; justify-content: space-between; align-items: center; padding: 4px 12px; margin: 0px">
     <div style="padding: 0px; margin: 0px">
-      <div style="display: flex; align-items: center; gap: 12px;">
+      <div style="display: flex; align-items: center; gap: 6px;">
         <h3>Detalle de Ventas - <%= @selected_vendors.length > 3 ? "#{@selected_vendors.length} Vendedores" : @selected_vendors.join(', ') %></h3>
         <button data-action="click->dashboard#toggleCommissionEdit" class="btn-icon" title="Editar Comisiones" data-dashboard-target="editIcon" style="background: none; border: none; color: var(--accent-cyan); cursor: pointer; display: flex; align-items: center; padding: 5px;">
           <!-- Icono de Editar (Lápiz) por defecto -->
@@ -111,7 +111,7 @@
       Exportar Excel
     </button>
   </div>
-  <div class="table-wrapper" style="height: calc(100vh - 300px);">
+  <div class="table-wrapper" style="flex: 1; min-height: 0;">
     <table class="data-table">
       <thead>
         <tr>
@@ -310,7 +310,7 @@
 </div>
 
 <% if @supervisor_rows.present? %>
-  <div class="supervisor-integration" style="margin-top: -14px;">
+  <div class="supervisor-integration">
     <%= render partial: "dashboard/tabs/supervisor", locals: { supervisor_rows: @supervisor_rows, integrated: true } %>
   </div>
 <% end %>

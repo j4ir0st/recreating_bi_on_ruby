@@ -4,13 +4,11 @@ class DashboardController < ApplicationController
   def index
     @active_tab = params[:tab] || "vendedor"
     
-    # [OPTIMIZACIÓN] Carga Diferida: Si es la entrada inicial al app (nueva pestaña o URL limpia), 
-    # enviamos el Shell (Layout + Cáscara Vacía) inmediatamente sin consultar APIs pesadas.
-    # Stimulus se encargará de disparar la carga real una vez el navegador reciba el HTML.
-    is_initial_load = params[:tab].blank? && params[:year].blank? && params[:vendor].blank? && !request.xhr?
-    
-    if is_initial_load
-      @active_tab = nil # Esto activa la skeleton-shell en index.html.erb
+    # [OPTIMIZACIÓN] Carga Diferida Total: Si es una petición HTML (carga inicial o F5), 
+    # enviamos el Shell (Layout + Cáscara Vacía) inmediatamente.
+    # Stimulus se encargará de disparar la carga real vía AJAX.
+    if !request.xhr?
+      @show_skeleton = true
       load_filters_only # Carga rápida desde caché para los selectores del header
       return
     end
@@ -25,19 +23,19 @@ class DashboardController < ApplicationController
   def productos
     @active_tab = "productos"
     return unless load_data
-    render partial: "dashboard/tabs/productos", locals: { dashboard: @dashboard, details: @product_details }
+    render partial: "dashboard/tabs/productos", locals: { dashboard: @dashboard, details: @product_details }, layout: false
   end
 
   def vendedor
     @active_tab = "vendedor"
     return unless load_data
-    render partial: "dashboard/tabs/vendedor", locals: { dashboard: @dashboard, vendor_data: @vendor_data }
+    render partial: "dashboard/tabs/vendedor", locals: { dashboard: @dashboard, vendor_data: @vendor_data }, layout: false
   end
 
   def reporte
     @active_tab = "reporte"
     return unless load_data
-    render partial: "dashboard/tabs/reporte", locals: { dashboard: @dashboard, monthly_data: @monthly_data }
+    render partial: "dashboard/tabs/reporte", locals: { dashboard: @dashboard, monthly_data: @monthly_data }, layout: false
   end
 
   def audit
@@ -57,7 +55,7 @@ class DashboardController < ApplicationController
       usuario_filter: params[:usuario_filter].to_s.strip,
       vendedores_filter: vendedores_filter
     )
-    render partial: "dashboard/tabs/historial", locals: { audit_history: @audit_history }
+    render partial: "dashboard/tabs/historial", locals: { audit_history: @audit_history }, layout: false
   rescue UnauthorizedError
     render json: { error: "Sesión expirada. Por favor inicia sesión nuevamente." }, status: :unauthorized
   rescue => e
@@ -88,7 +86,7 @@ class DashboardController < ApplicationController
   def supervisor
     @active_tab = "supervisor"
     return unless prepare_supervisor_data
-    render partial: "dashboard/tabs/supervisor", locals: { supervisor_rows: @supervisor_rows || [] }
+    render partial: "dashboard/tabs/supervisor", locals: { supervisor_rows: @supervisor_rows || [] }, layout: false
   rescue UnauthorizedError
     render json: { error: "Sesión expirada. Por favor inicia sesión nuevamente." }, status: :unauthorized
   rescue => e

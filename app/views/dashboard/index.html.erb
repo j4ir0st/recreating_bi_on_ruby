@@ -73,7 +73,15 @@
                 <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2"/></svg>
               </div>
               <div class="multiselect-dropdown">
-                <!-- Opción especial: Todas (muestra detalle de todos los vendedores) -->
+                <!-- Buscador de Vendedores -->
+                <div style="padding: 8px; position: sticky; top: 0; background: var(--bg-card); z-index: 10; border-bottom: 1px solid var(--border-color);">
+                  <input type="text" 
+                         placeholder="Buscar vendedor..." 
+                         data-action="input->dashboard#filterVendors"
+                         style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--border-color); 
+                                border-radius: 4px; color: var(--text-primary); padding: 6px 10px; font-size: 0.85rem; outline: none;">
+                </div>
+                <!-- Opción especial: Todas -->
                 <div class="multiselect-option" style="border-bottom: 1px solid var(--border); margin-bottom: 4px; padding-bottom: 6px;">
                   <input type="checkbox" name="vendor[]" value="Todas" id="vendor_todas"
                          data-action="change->dashboard#toggleVendorTodas"
@@ -110,12 +118,12 @@
               <option value="N" <%= 'selected' if current_pagada == 'N' %>>Pendiente</option>
             </select>
           </div>
-        </div>
-    </form>
+
+      </form>
   </div>
 
-  <!-- Tabs + Filtros de Historial en la misma fila -->
-  <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 4px;">
+  <!-- Tabs + Filtros de Historial en la misma fila (Layout Original para ahorrar espacio) -->
+  <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 0px;">
     <div class="tabs" style="flex: 0 0 auto; overflow-x: auto; white-space: nowrap; max-width: 100%;">
       <button class="tab-btn <%= 'active' if @active_tab == 'vendedor' || @active_tab.nil? %>"
               data-tab="vendedor"
@@ -137,22 +145,24 @@
     <!-- Filtros exclusivos del Historial (ocultos en otras pestañas) -->
     <div id="historial-filters"
          style="display: <%= @active_tab == 'historial' ? 'flex' : 'none' %>;
-                margin-left: auto; gap: 12px; align-items: center; flex-wrap: nowrap;">
+                margin-left: auto; gap: 20px; align-items: center; flex-wrap: nowrap;">
       <!-- Filtro Comprobantes -->
-      <div class="filter-group" style="min-width: 240px;">
-        <label style="font-size:0.7rem;">Comprobantes</label>
-        <input type="text" id="filter-comprobantes" placeholder="Ej: F003-16650"
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <label style="font-size:0.75rem; color:var(--accent-cyan); font-weight:700; opacity:0.9; letter-spacing:0.5px;">COMPROBANTES:</label>
+        <input type="text" id="filter-comprobantes" placeholder="Busca factura..."
                value="<%= params[:comprobantes_filter] %>"
-               style="width:100%; background:transparent; border:none; color:var(--text-primary);
-                      font-family:'Inter',sans-serif; font-size:0.85rem; outline:none; padding:6px 0;">
+               style="width:200px; background:rgba(255,255,255,0.07); border:1px solid var(--border-color); 
+                      color:var(--text-primary); font-family:'Inter',sans-serif; font-size:0.85rem; 
+                      outline:none; padding:6px 12px; border-radius:6px; transition: border-color 0.3s;">
       </div>
       <!-- Filtro Usuario -->
-      <div class="filter-group" style="min-width: 240px;">
-        <label style="font-size:0.7rem;">Usuario</label>
-        <input type="text" id="filter-usuario" placeholder="Ej: Jairo"
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <label style="font-size:0.75rem; color:var(--accent-cyan); font-weight:700; opacity:0.9; letter-spacing:0.5px;">USUARIO:</label>
+        <input type="text" id="filter-usuario" placeholder="Busca usuario..."
                value="<%= params[:usuario_filter] %>"
-               style="width:100%; background:transparent; border:none; color:var(--text-primary);
-                      font-family:'Inter',sans-serif; font-size:0.85rem; outline:none; padding:6px 0;">
+               style="width:200px; background:rgba(255,255,255,0.07); border:1px solid var(--border-color); 
+                      color:var(--text-primary); font-family:'Inter',sans-serif; font-size:0.85rem; 
+                      outline:none; padding:6px 12px; border-radius:6px; transition: border-color 0.3s;">
       </div>
     </div>
   </div>
@@ -210,9 +220,21 @@
 
   <!-- KPI Cards removed as per user request -->
 
-  <!-- Contenido de las Pestañas -->
-  <div data-dashboard-target="content">
-    <% if @active_tab.present? %>
+  <!-- Contenido de las Pestañas (Scrollable) -->
+  <div data-dashboard-target="content" style="flex: 1; height: calc(100vh - 180px); overflow-y: auto; min-height: 0; padding-bottom: 24px;">
+    <% if @show_skeleton %>
+      <%# Estrategia de Cáscara Vacía (Skeleton Screen) mientras carga la data inicial %>
+      <div class="skeleton-shell" style="padding: 20px;">
+        <div class="skeleton-title" style="width: 300px; height: 30px; background: rgba(255,255,255,0.05); margin-bottom: 20px; border-radius: 4px;"></div>
+        <div class="skeleton-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 30px;">
+          <div class="skeleton-card" style="height: 120px; background: rgba(255,255,255,0.05); border-radius: 12px;"></div>
+          <div class="skeleton-card" style="height: 120px; background: rgba(255,255,255,0.05); border-radius: 12px;"></div>
+          <div class="skeleton-card" style="height: 120px; background: rgba(255,255,255,0.05); border-radius: 12px;"></div>
+          <div class="skeleton-card" style="height: 120px; background: rgba(255,255,255,0.05); border-radius: 12px;"></div>
+        </div>
+        <div class="skeleton-table" style="height: 400px; background: rgba(255,255,255,0.05); border-radius: 12px;"></div>
+      </div>
+    <% else %>
       <%# Selección de parcial según la pestaña activa %>
       <% if @active_tab == "vendedor" %>
         <%= render partial: "dashboard/tabs/vendedor", locals: { dashboard: @dashboard, vendor_data: @vendor_data } %>
@@ -229,18 +251,6 @@
       <% elsif @active_tab == "supervisor" %>
         <%= render partial: "dashboard/tabs/supervisor", locals: { supervisor_rows: @supervisor_rows || [] } %>
       <% end %>
-    <% else %>
-      <%# Estrategia de Cáscara Vacía (Skeleton Screen) mientras carga la data inicial %>
-      <div class="skeleton-shell" style="padding: 20px;">
-        <div class="skeleton-title" style="width: 300px; height: 30px; background: rgba(255,255,255,0.05); margin-bottom: 20px; border-radius: 4px;"></div>
-        <div class="skeleton-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 30px;">
-          <div class="skeleton-card" style="height: 120px; background: rgba(255,255,255,0.05); border-radius: 12px;"></div>
-          <div class="skeleton-card" style="height: 120px; background: rgba(255,255,255,0.05); border-radius: 12px;"></div>
-          <div class="skeleton-card" style="height: 120px; background: rgba(255,255,255,0.05); border-radius: 12px;"></div>
-          <div class="skeleton-card" style="height: 120px; background: rgba(255,255,255,0.05); border-radius: 12px;"></div>
-        </div>
-        <div class="skeleton-table" style="height: 400px; background: rgba(255,255,255,0.05); border-radius: 12px;"></div>
-      </div>
     <% end %>
   </div>
 </div>

@@ -6,19 +6,16 @@ services:
     # Ejecutar como root para evitar problemas de permisos en Windows con volúmenes montados
     user: root
     # Asegurar que se escuche en todas las interfaces (0.0.0.0) y limpiar PID previo
-    # Asegurar que se escuche en todas las interfaces (0.0.0.0) y limpiar PID previo
-    # Asegurar que se escuche en todas las interfaces (0.0.0.0) y limpiar PID previo
     command: /bin/sh -c "dos2unix bin/* && rm -f tmp/pids/server.pid && bundle exec rails server -b 0.0.0.0"
     ports:
       - "3000:3000"
+    restart: unless-stopped
     environment:
       - RAILS_ENV=production
-      - SECRET_KEY_BASE=50426f047726359f4f9cc183577583626297379f8260d844fa67919864cc286b24d9c7205161c5658e4745db471694f83b28f73a33550eafd2fd5318098d473a
+      - SECRET_KEY_BASE=${SECRET_KEY_BASE}
       - RAILS_SERVE_STATIC_FILES=true
       - RAILS_LOG_TO_STDOUT=true
-      - RAILS_RELATIVE_URL_ROOT=/app_comisiones
-      # URL de la API de Producción
-      - API_BASE_URL=https://appsurgicorperu.com
-      # Credenciales eliminadas por seguridad - Se usa Login de Usuario
+      - RAILS_RELATIVE_URL_ROOT=${RELATIVE_URL}
+      - API_BASE_URL=${BACKEND_URL}
     extra_hosts:
       - "host.docker.internal:host-gateway"
